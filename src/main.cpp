@@ -4,21 +4,25 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <BLESecurity.h>
 
 // ====================== 在 这 里 修 改 参 数 ======================
-#define DEVICE_NAME "ESP32_BLE_2026" // 设 备 名 称， 手 机 上 搜 索 到 的 名 字
-#define PAIRING_PIN "123456" // 配 对 密 码， 设 置 为 空 字 符 串 则 不 需 要 密 码
+#define DEVICE_NAME "Tsinghua-Insecure" // 设 备 名 称， 手 机 上 搜 索 到 的 名 字
+#define PAIRING_PIN "" // 配 对 密 码， 设 置 为 空 字 符 串 则 不 需 要 密 码
 
 // 通 用Nordic UART Service UUID （无 需 修 改！ 所 有APP都 支 持 这 个 标 准）
-#define SERVICE_UUID "6E400001 -B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_RX "6E400002 -B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_TX "6E400003 -B5A3-F393-E0A9-E50E24DCCA9E"
+#define SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // 全 局 变 量 （不 需 要 修 改）
 BLEServer *pServer = NULL; // 创 建 服 务 器
 BLECharacteristic *pTxCharacteristic; // 创 建 特 征 值， 控 制 蓝 牙 读 写 模 式
 bool isConnected = false; // 连 接 状 态 标 志： true=已 连 接， false=未 连 接
 std::string receivedData = ""; // 自 动 存 储 手 机 发 送 过 来 的 字 符 串
+
+void sendBLEString(String str);
+void disconnectBLE();
 
 // ============= 连 接 状 态 回 调 函 数 （不 需 要 修 改） =============
 // 当 手 机 连 接 或 断 开 时， 这 个 函 数 会 自 动 执 行
@@ -67,8 +71,10 @@ void setup() { // Serial输 出 的 调 试 信 息 可 删
 
 	// 2. 设 置 配 对 密 码 （如 果 PAIRING_PIN 不 为 空）
 	if(strlen(PAIRING_PIN) > 0) {
-		BLEDevice::setSecurityAuth(true , true , true);
-		BLEDevice::setPin(PAIRING_PIN);
+		BLESecurity *pSecurity = new BLESecurity();
+		pSecurity ->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+		pSecurity ->setCapability(ESP_IO_CAP_OUT);
+		pSecurity ->setStaticPIN(strtoul(PAIRING_PIN, NULL, 10));
 		Serial.print("配 对 密 码 已 设 置 为: ");
 		Serial.println(PAIRING_PIN);
 	} else {

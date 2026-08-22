@@ -21,8 +21,12 @@ PlatformIO Arduino firmware for a DIY AR star-glasses device (观星AR眼镜): a
 
 - `test/oled.cpp` is a reference snippet copied from another project; its includes (`pin_config.h`, `oled.h`, `pet_state.h`) don't exist here. Its header comment says to ignore it — do not try to fix, build, or delete it.
 - Hard-earned I2C lesson (recorded in `test/oled.cpp` comments): if U8g2's constructor receives SCL/SDA pins, calling `Wire.begin()` separately triggers a duplicate bus init that hard-locks the ESP32-S3 I2C bus → blank OLED, no serial output. Init the bus exactly once.
-- No `lib_deps` declared yet: BLE ships inside the espressif32 platform (ESP32 BLE Arduino). When OLED work starts, U8g2 must be added to `platformio.ini`.
-- `src/main.cpp` is currently a standalone BLE test sketch (device name `TH-Insecure`, optional static pairing PIN); expect it to be rewritten as phases progress rather than extended indefinitely.
+- `lib_deps` currently only has U8g2 (`olikraus/U8g2@^2.36.0`) for the OLED. BLE ships inside the espressif32 platform (ESP32 BLE Arduino), so no extra dep is needed for it.
+- Code is organized per the architecture in `plan.md` (headers in `include/`, sources under `src/ble`, `src/drivers`, `src/behaviors`; free functions, no classes):
+  - `src/main.cpp` is only the glue layer: `setup()` init + `loop()` heartbeat / BOOT-key debounce / `oledTick()` refresh.
+  - `src/ble/BleService.*` — Nordic UART passthrough (device name `Glasses`, optional static pairing PIN via `PAIRING_PIN` in `include/BleService.h`). Phone data is delivered through a registered callback (`bleOnDataReceived`).
+  - `src/drivers/DisplayDriver.*` — U8g2 SSD1306 scrolling-text terminal; text enters via `oledShowText()`, actual drawing happens in `oledTick()` called from `loop()` (BLE callbacks must not draw directly).
+  - `src/drivers/ImuDriver.*` and `src/behaviors/*` are empty skeletons reserved for phase 2/3.
 
 ## Conventions
 

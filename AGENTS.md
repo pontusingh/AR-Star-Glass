@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PlatformIO Arduino firmware for a DIY AR star-glasses device (观星AR眼镜): an ESP32-S3 head unit that talks BLE (Nordic UART passthrough) to a phone app; later phases add BNO085 IMU, I2C OLED labels, and prism optics. `plan.md` (Chinese) is the roadmap and architecture source of truth — read it first.
+PlatformIO Arduino firmware for a DIY AR star-glasses device (观星AR眼镜): a fully standalone, self-contained unit — MCU + BNO085 IMU + GPS module + I2C OLED + prism optics + physical buttons. All astronomy math (Astronomy Engine C port) and the star catalog run on-device; there is NO phone/BLE involvement in the core architecture anymore. Final target hardware is an ESP32-C3 SuperMini; current development/testing uses an ESP32-S3 dev board. `plan.md` (Chinese) is the roadmap and architecture source of truth — read it first.
 
 ## Commands
 
@@ -21,12 +21,13 @@ PlatformIO Arduino firmware for a DIY AR star-glasses device (观星AR眼镜): a
 
 - `test/oled.cpp` is a reference snippet copied from another project; its includes (`pin_config.h`, `oled.h`, `pet_state.h`) don't exist here. Its header comment says to ignore it — do not try to fix, build, or delete it.
 - Hard-earned I2C lesson (recorded in `test/oled.cpp` comments): if U8g2's constructor receives SCL/SDA pins, calling `Wire.begin()` separately triggers a duplicate bus init that hard-locks the ESP32-S3 I2C bus → blank OLED, no serial output. Init the bus exactly once.
-- `lib_deps` currently only has U8g2 (`olikraus/U8g2@^2.36.0`) for the OLED. BLE ships inside the espressif32 platform (ESP32 BLE Arduino), so no extra dep is needed for it.
-- Code is organized per the architecture in `plan.md` (headers in `include/`, sources under `src/ble`, `src/drivers`, `src/behaviors`; free functions, no classes):
-  - `src/main.cpp` is only the glue layer: `setup()` init + `loop()` heartbeat / BOOT-key debounce / `oledTick()` refresh.
-  - `src/ble/BleService.*` — Nordic UART passthrough (device name `Glasses`, optional static pairing PIN via `PAIRING_PIN` in `include/BleService.h`). Phone data is delivered through a registered callback (`bleOnDataReceived`).
-  - `src/drivers/DisplayDriver.*` — U8g2 SSD1306 scrolling-text terminal; text enters via `oledShowText()`, actual drawing happens in `oledTick()` called from `loop()` (BLE callbacks must not draw directly).
-  - `src/drivers/ImuDriver.*` and `src/behaviors/*` are empty skeletons reserved for phase 2/3.
+- `lib_deps` currently only has U8g2 (`olikraus/U8g2@^2.36.0`) for the OLED. The ESP32 BLE Arduino library ships inside the espressif32 platform but is intentionally unused now (see the disabled-BLE gotcha below).
+- `src/ble/BleService.cpp.bak` / `include/BleService.h.bak` is the old BLE UART passthrough, kept as reference for future debug-logging/OTA work. The `.bak` extension keeps it out of the build — do not delete it and do not try to compile it.
+- Code is organized per the architecture in `plan.md` (headers in `include/`, sources under `src/drivers`, `src/data`, `src/behaviors`; free functions, no classes):
+  - `src/main.cpp` is only the glue layer: `setup()` initializes drivers; `loop()` polls buttons + calls `oledTick()`.
+  - `src/drivers/DisplayDriver.*` — U8g2 SSD1306 scrolling-text terminal; text enters via `oledShowText()`, actual drawing happens in `oledTick()` called from `loop()` (ISR/BLE-style callbacks must never draw directly).
+  - `src/drivers/ButtonDriver.*` — implemented: non-blocking debounce (`buttonWasPressed()`, edge-triggered); action routing awaits InputManager (phase 5).
+  - Skeletons reserved for later phases: `ImuDriver.*`, `GpsDriver.*` (drivers), `StarCatalog.*`, `AstronomyEngine.*` (data layer; thin wrapper over the future C sources in `lib/AstronomyEngine/`), and `OrientationManager` / `VisibilityRanker` / `CalibrationManager` / `TimeTravelManager` / `RenderManager` / `InputManager` (behaviors).
 
 ## Conventions
 

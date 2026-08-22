@@ -11,7 +11,7 @@
 #include <U8g2lib.h>
 
 // ====================== 在 这 里 修 改 参 数 ======================
-#define DEVICE_NAME "TH-Insecure" // 设 备 名 称， 手 机 上 搜 索 到 的 名 字
+#define DEVICE_NAME "My-AR-Glasses" // 设 备 名 称， 手 机 上 搜 索 到 的 名 字
 #define PAIRING_PIN "" // 配 对 密 码， 设 置 为 空 字 符 串 则 不 需 要 密 码
 
 // 通 用Nordic UART Service UUID （无 需 修 改！ 所 有APP都 支 持 这 个 标 准）

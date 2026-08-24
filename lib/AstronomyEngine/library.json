@@ -1,0 +1,11 @@
+{
+    "name": "AstronomyEngine",
+    "version": "2.1.19",
+    "license": "MIT",
+    "description": "Astronomy Engine C implementation (vendored from cosinekitty/astronomy v2.1.19), unmodified except build-time exclusion of Astronomy_CurrentTime() which has no ESP32 support.",
+    "build": {
+        "flags": [
+            "-DASTRONOMY_ENGINE_NO_CURRENT_TIME"
+        ]
+    }
+}

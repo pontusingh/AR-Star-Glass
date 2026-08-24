@@ -42,7 +42,8 @@ Thumbs.db
 *.bak
 
 # Dependencies
-lib/
+lib/*
+!lib/AstronomyEngine
 
 # Debug
 debug_output.txt

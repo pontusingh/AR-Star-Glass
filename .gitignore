@@ -48,3 +48,7 @@ lib/*
 # Debug
 debug_output.txt
 build_output.txt
+
+# Host-side verification binary
+tools/host_verify/host_verify
+tools/host_verify/host_verify.exe

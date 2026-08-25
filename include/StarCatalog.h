@@ -29,7 +29,8 @@ typedef struct {
 extern const CatalogStar STAR_CATALOG[];
 extern const int STAR_CATALOG_COUNT;
 
-// 太阳系天体名称表（太阳/月亮/八大行星/冥王星），定义在 StarCatalog.cpp
+// 太阳系天体名称表（太阳/月亮/八大行星），定义在 StarCatalog.cpp
+// （冥王星暂缓收录：肉眼不可见且引擎其计算路径栈开销过大，见 StarCatalog.cpp 注释）
 extern const CatalogBody BODY_CATALOG[];
 extern const int BODY_CATALOG_COUNT;
 

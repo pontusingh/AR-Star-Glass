@@ -11,7 +11,7 @@
 #include <Arduino.h>
 #include "AstronomyEngine.h"
 
-// 结果缓存容量：60 颗亮星 + 10 个太阳系天体，留少量余量
+// 结果缓存容量：60 颗亮星 + 9 个太阳系天体，留少量余量
 #define RANKER_MAX_TARGETS 72
 
 // 目标类别（决定 catalogIndex 的含义）

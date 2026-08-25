@@ -1,34 +1,29 @@
-// 驱动层：板载按键的去抖读取
+// 驱动层：板载按键的去抖读取（ISR 中断方案）
+// 参考 THUEE-MCU-2026 Major-Assignment-Desktop-Pet 的 button.cpp 实现
 #include <Arduino.h>
-
 #include "ButtonDriver.h"
 
-// 消抖状态变量（自 main.cpp 迁入，逻辑不变）
-static unsigned long lastDebounceMs = 0;    // BOOT 键消抖计时
-static bool    lastButtonReading = HIGH;    // 上一次读到原始引脚电平
-static bool    buttonStable = HIGH;         // 消抖后稳定的按键状态
+static volatile bool pressFlag = false;
+static volatile unsigned long lastPressMs = 0;
+static const unsigned long DEBOUNCE_MS = 200;
+
+void ARDUINO_ISR_ATTR onButtonPress() {
+    unsigned long now = millis();
+    if (now - lastPressMs > DEBOUNCE_MS) {
+        pressFlag = true;
+        lastPressMs = now;
+    }
+}
 
 void buttonInit() {
-	pinMode(PIN_BUTTON_BOOT, INPUT_PULLUP); // 板载 BOOT 键，按下为 LOW
+    pinMode(PIN_BUTTON_BOOT, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_BOOT), onButtonPress, FALLING);
 }
 
 bool buttonWasPressed() {
-	bool pressed = false;
-	unsigned long now = millis();
+    return pressFlag;
+}
 
-	// 非阻塞消抖（取代原 delay/wait），松手后才允许再次触发
-	bool reading = digitalRead(PIN_BUTTON_BOOT);
-	if (reading != lastButtonReading) {
-		lastDebounceMs = now;          // 状态翻转即重置计时
-		lastButtonReading = reading;
-	}
-	if ((now - lastDebounceMs) > 50) { // 50ms 稳定确认
-		if (reading != buttonStable) {
-			buttonStable = reading;
-			if (buttonStable == LOW) { // 确认按下 → 上报一次按键事件
-				pressed = true;
-			}
-		}
-	}
-	return pressed;
+void buttonClearFlag() {
+    pressFlag = false;
 }

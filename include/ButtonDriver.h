@@ -8,7 +8,8 @@
 
 #define PIN_BUTTON_BOOT 0 // 板载 BOOT 键（GPIO0，按下为 LOW，内部上拉）
 
-void buttonInit();       // 配置按键引脚
-bool buttonWasPressed(); // 非阻塞轮询：消抖确认"新按下"时返回一次 true（边沿触发）
+void buttonInit();        // 配置按键引脚，注册中断
+bool buttonWasPressed();  // 检查是否有新按下事件（边沿触发，需配合 buttonClearFlag 使用）
+void buttonClearFlag();   // 清除按下标志，供主循环消费后调用
 
 #endif // BUTTON_DRIVER_H

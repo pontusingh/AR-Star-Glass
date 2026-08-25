@@ -229,9 +229,11 @@ void loop()
 	}
 
 	// 3. 按键事件（消抖在 ButtonDriver 内完成）
-	if (buttonWasPressed()) {
-		Serial.println("BOOT 键按下"); // 占位：动作路由待第 5 阶段由 InputManager 接管
-		buttonClearFlag();
+	ButtonId btn = buttonRead();
+	if (btn != BTN_NONE) {
+		const char* names[] = {"A", "B", "UP", "DOWN"};
+		Serial.printf("按键[%s] 按下\n", names[btn]);
+		buttonClear();
 	}
 
 	// 4. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制

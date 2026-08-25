@@ -3,13 +3,25 @@
 
 #include <Arduino.h>
 
-// 驱动层：板载按键的去抖读取（纯硬件封装，无逻辑）
-// TODO: 按键动作的路由（模式切换/校准/浏览等）待第 5 阶段由 InputManager 接管
+// 驱动层：4 个物理按键的去抖读取（纯硬件封装，无逻辑）
+// A=GPIO4 确认，B=GPIO5 返回，UP=GPIO6 上/加，DOWN=GPIO7 下/减
 
-#define PIN_BUTTON_BOOT 0 // 板载 BOOT 键（GPIO0，按下为 LOW，内部上拉）
+#define PIN_BTN_A     4
+#define PIN_BTN_B     5
+#define PIN_BTN_UP    6
+#define PIN_BTN_DOWN  7
 
-void buttonInit();        // 配置按键引脚，注册中断
-bool buttonWasPressed();  // 检查是否有新按下事件（边沿触发，需配合 buttonClearFlag 使用）
-void buttonClearFlag();   // 清除按下标志，供主循环消费后调用
+typedef enum {
+    BTN_NONE = -1,
+    BTN_A    = 0,
+    BTN_B    = 1,
+    BTN_UP   = 2,
+    BTN_DOWN = 3
+} ButtonId;
+
+void buttonInit();         // 配置 4 个按键引脚，注册中断
+bool buttonAnyPressed();   // 是否有任意按键按下
+ButtonId buttonRead();     // 返回最新按下的按键 ID（BTN_NONE 表示无）
+void buttonClear();        // 清除所有按键标志
 
 #endif // BUTTON_DRIVER_H

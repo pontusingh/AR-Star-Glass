@@ -1,29 +1,55 @@
-// 驱动层：板载按键的去抖读取（ISR 中断方案）
+// 驱动层：4 个物理按键的去抖读取（单 ISR + 数组化，便于扩展）
 // 参考 THUEE-MCU-2026 Major-Assignment-Desktop-Pet 的 button.cpp 实现
 #include <Arduino.h>
 #include "ButtonDriver.h"
 
-static volatile bool pressFlag = false;
-static volatile unsigned long lastPressMs = 0;
 static const unsigned long DEBOUNCE_MS = 200;
 
-void ARDUINO_ISR_ATTR onButtonPress() {
+// 引脚表：顺序对应 ButtonId 枚举（新增按键只需在此追加）
+static const uint8_t BTN_PINS[] = { PIN_BTN_A, PIN_BTN_B, PIN_BTN_UP, PIN_BTN_DOWN };
+static const int     BTN_COUNT  = sizeof(BTN_PINS) / sizeof(BTN_PINS[0]);
+
+// 消抖状态数组（按 ButtonId 索引）
+static volatile bool           s_flags[BTN_COUNT];
+static volatile unsigned long  s_lastPress[BTN_COUNT];
+static volatile ButtonId       s_lastButton = BTN_NONE;
+
+// 单 ISR：遍历所有引脚，判断哪个触发并通过消抖
+void ARDUINO_ISR_ATTR onAnyButton() {
     unsigned long now = millis();
-    if (now - lastPressMs > DEBOUNCE_MS) {
-        pressFlag = true;
-        lastPressMs = now;
+    for (int i = 0; i < BTN_COUNT; i++) {
+        if (digitalRead(BTN_PINS[i]) == LOW
+            && (now - s_lastPress[i]) > DEBOUNCE_MS) {
+            s_flags[i] = true;
+            s_lastPress[i] = now;
+            s_lastButton = (ButtonId)i;
+        }
     }
 }
 
 void buttonInit() {
-    pinMode(PIN_BUTTON_BOOT, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_BOOT), onButtonPress, FALLING);
+    for (int i = 0; i < BTN_COUNT; i++) {
+        pinMode(BTN_PINS[i], INPUT_PULLUP);
+    }
+    for (int i = 0; i < BTN_COUNT; i++) {
+        attachInterrupt(digitalPinToInterrupt(BTN_PINS[i]), onAnyButton, FALLING);
+    }
 }
 
-bool buttonWasPressed() {
-    return pressFlag;
+bool buttonAnyPressed() {
+    for (int i = 0; i < BTN_COUNT; i++) {
+        if (s_flags[i]) return true;
+    }
+    return false;
 }
 
-void buttonClearFlag() {
-    pressFlag = false;
+ButtonId buttonRead() {
+    return s_lastButton;
+}
+
+void buttonClear() {
+    for (int i = 0; i < BTN_COUNT; i++) {
+        s_flags[i] = false;
+    }
+    s_lastButton = BTN_NONE;
 }

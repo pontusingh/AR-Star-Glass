@@ -2,27 +2,28 @@
 #define TIME_TRAVEL_MANAGER_H
 
 // 行为层：时空旅行管理器。
-// 持有一个可选的「用户设定时刻」；激活后，天文计算一律使用该时刻，
-// 而不是实时时钟（未来为 GPS 时间）。本阶段（第 1 阶段）先通过串口命令
-// 验证「同一引擎在任意时刻都能给出正确星空」，按键调节在第 5 阶段接入。
+// 持有一个可选的「用户设定时刻」和一个「用户设定位置」；
+// 激活后，天文计算一律使用用户设定值，而不是实时 GPS 数据。
+// 供 main.cpp 串口验证台和第 5 阶段按键调节使用。
 
 #include <Arduino.h>
 #include "AstronomyEngine.h"
 
-// 设定并立即生效一个 UTC 覆盖时刻
+// 时间覆盖
 void timetravelSet(int year, int month, int day, int hour, int minute, double second);
-
-// 取消覆盖，恢复跟随实时时钟
 void timetravelClear();
-
-// 是否处于覆盖状态
 bool timetravelIsActive();
-
-// 读取当前覆盖时刻（仅当 timetravelIsActive() 为真时有效）
 astro_utc_t timetravelGetOverride();
-
-// 核心接口：把基础时刻（实时时钟）解析为实际参与天文计算的时刻。
-// 覆盖激活时返回用户设定时刻，否则原样透传 baseTime。
 astro_time_t timetravelResolve(astro_time_t baseTime);
+
+// 位置覆盖
+void timetravelOverrideObserver(double lat, double lon, double height_m);
+void timetravelClearObserver();
+bool timetravelHasLocationOverride();
+astro_observer_t timetravelGetObserverOverride();
+
+// 核心解析：把 GPS 数据解析为参与天文计算的实际数据
+astro_time_t     timetravelResolveTime(astro_time_t gpsTime);
+astro_observer_t timetravelResolveObserver(astro_observer_t gpsObs);
 
 #endif // TIME_TRAVEL_MANAGER_H

@@ -1,48 +1,85 @@
 // 行为层实现：时空旅行管理器。
-// 状态极简：一个 astro_utc_t 覆盖值 + 一个激活标志。
-// 不持有实时时钟本身——「现在几点」由上层（本阶段是 main.cpp 的串口验证台，
-// 未来是 GpsDriver）提供，这里只负责「要不要替换成用户时刻」这一个决策，
-// 因此 GPS 接入时本模块无需任何改动。
+// 状态：时间覆盖 + 位置覆盖，各有独立的激活标志。
 #include "TimeTravelManager.h"
 
 namespace {
 
-astro_utc_t s_override = {2000, 1, 1, 0, 0, 0.0}; // 未激活时的占位值
-bool s_active = false;
+astro_utc_t      s_timeOverride = {2000, 1, 1, 0, 0, 0.0};
+bool             s_timeActive = false;
+astro_observer_t s_locOverride = {0.0, 0.0, 0.0};
+bool             s_locActive = false;
 
 } // namespace
 
+// ---------- 时间覆盖 ----------
+
 void timetravelSet(int year, int month, int day, int hour, int minute, double second)
 {
-	s_override.year = year;
-	s_override.month = month;
-	s_override.day = day;
-	s_override.hour = hour;
-	s_override.minute = minute;
-	s_override.second = second;
-	s_active = true;
+	s_timeOverride.year = year;
+	s_timeOverride.month = month;
+	s_timeOverride.day = day;
+	s_timeOverride.hour = hour;
+	s_timeOverride.minute = minute;
+	s_timeOverride.second = second;
+	s_timeActive = true;
 }
 
 void timetravelClear()
 {
-	s_active = false;
+	s_timeActive = false;
 }
 
 bool timetravelIsActive()
 {
-	return s_active;
+	return s_timeActive;
 }
 
 astro_utc_t timetravelGetOverride()
 {
-	return s_override;
+	return s_timeOverride;
 }
 
 astro_time_t timetravelResolve(astro_time_t baseTime)
 {
-	if (!s_active)
+	if (!s_timeActive)
 		return baseTime;
-	// 引擎移植版没有 CurrentTime()，覆盖时刻同样要经 astroMakeTime 构造
-	return astroMakeTime(s_override.year, s_override.month, s_override.day,
-			     s_override.hour, s_override.minute, s_override.second);
+	return astroMakeTime(s_timeOverride.year, s_timeOverride.month, s_timeOverride.day,
+			     s_timeOverride.hour, s_timeOverride.minute, s_timeOverride.second);
+}
+
+// ---------- 位置覆盖 ----------
+
+void timetravelOverrideObserver(double lat, double lon, double height_m)
+{
+	s_locOverride.latitude = lat;
+	s_locOverride.longitude = lon;
+	s_locOverride.height = height_m;
+	s_locActive = true;
+}
+
+void timetravelClearObserver()
+{
+	s_locActive = false;
+}
+
+bool timetravelHasLocationOverride()
+{
+	return s_locActive;
+}
+
+astro_observer_t timetravelGetObserverOverride()
+{
+	return s_locOverride;
+}
+
+astro_observer_t timetravelResolveObserver(astro_observer_t gpsObs)
+{
+	if (s_locActive)
+		return s_locOverride;
+	return gpsObs;
+}
+
+astro_time_t timetravelResolveTime(astro_time_t gpsTime)
+{
+	return timetravelResolve(gpsTime);
 }

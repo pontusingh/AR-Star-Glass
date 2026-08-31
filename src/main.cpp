@@ -1,5 +1,6 @@
 // 当前阶段：第 1 阶段 —— 天文引擎 + 星表，GPS 已接入
 // 主程序（胶水层）：setup() 初始化驱动；loop() 轮询 GPS、按键、刷新可见目标表并打印。
+// GPS 首次定位前等待，不输出天文目标表；定位后保留最后一次有效值继续工作。
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
@@ -18,22 +19,15 @@
 #include "VisibilityRanker.h"
 #include "TimeTravelManager.h"
 
-// ---------- 默认配置（GPS 无定位时的回退值） ----------
-static const double DEFAULT_LAT = 39.9042;
-static const double DEFAULT_LON = 116.4074;
-static const double DEFAULT_HEIGHT_M = 40.0;
-static const int DEF_Y = 2026, DEF_MO = 8, DEF_D = 25;
-static const int DEF_H = 12, DEF_MI = 0;
-static const double DEF_S = 0.0;
-
-static const unsigned long REFRESH_INTERVAL_MS = 1000;
-static const int PRINT_TOP_N = 10;
+static const unsigned long REFRESH_INTERVAL_MS = 1000; // 目标表刷新节奏（低频足够）
+static const int PRINT_TOP_N = 10;                     // 每次打印前 N 个目标
 
 // ---------- 运行期状态 ----------
-static astro_observer_t s_observer;
-static astro_utc_t s_nowUtc;
+static astro_observer_t s_observer = {0.0, 0.0, 0.0};
+static astro_utc_t s_nowUtc = {0, 0, 0, 0, 0, 0.0};
 static unsigned long s_lastRefreshMs = 0;
-static bool s_forceRefresh = true;
+static bool s_forceRefresh = false;
+static bool s_gpsFirstFix = false; // GPS 首次定位标志
 
 // ---------- 串口行输入缓冲 ----------
 static char s_lineBuf[128];
@@ -55,6 +49,7 @@ const char* locSourceTag()
 	return "GPS";
 }
 
+// 把引擎时间转回 UTC 日历值并打印（用于核对有效时刻）
 void printEffectiveTime(astro_time_t t)
 {
 	astro_utc_t utc = Astronomy_UtcFromTime(t);
@@ -62,6 +57,7 @@ void printEffectiveTime(astro_time_t t)
 		      utc.hour, utc.minute, (int)utc.second);
 }
 
+// 打印一次可见目标表头 + Top N 行
 void reportTargets(astro_time_t effectiveTime, astro_observer_t effectiveObs)
 {
 	Serial.println("------------------------------------------------------------");
@@ -94,6 +90,7 @@ void reportTargets(astro_time_t effectiveTime, astro_observer_t effectiveObs)
 	}
 }
 
+// 从一行命令里依次取出数字参数（用 strtod，避开 newlib 的 scanf 浮点裁剪问题）
 int parseDoubles(char *saveptr, double *out, int maxCount)
 {
 	int count = 0;
@@ -112,6 +109,7 @@ void printHelp()
 		       "TT=<年 月 日 时 分 秒|OFF> R=立即刷新");
 }
 
+// 处理一条完整命令行（已含结尾 \\0）
 void handleCommand(char *line)
 {
 	char *saveptr = NULL;
@@ -121,9 +119,9 @@ void handleCommand(char *line)
 	double v[6];
 
 	switch (cmd[0]) {
-	case 'P': {
+	case 'P': { // 设置观察点覆盖：纬度 经度
 		if (parseDoubles(saveptr, v, 2) == 2) {
-			timetravelOverrideObserver(v[0], v[1], DEFAULT_HEIGHT_M);
+			timetravelOverrideObserver(v[0], v[1], 0.0);
 			s_forceRefresh = true;
 			Serial.printf("位置覆盖已生效: lat=%.4f lon=%.4f\n", v[0], v[1]);
 		} else {
@@ -132,7 +130,7 @@ void handleCommand(char *line)
 		break;
 	}
 	case 'T': {
-		if (cmd[1] == 'T') {
+		if (cmd[1] == 'T') { // 时空旅行：TT ... 或 TT OFF
 			if (parseDoubles(saveptr, v, 6) == 6) {
 				timetravelSet((int)v[0], (int)v[1], (int)v[2], (int)v[3],
 					      (int)v[4], v[5]);
@@ -142,13 +140,13 @@ void handleCommand(char *line)
 					      o.year, o.month, o.day, o.hour, o.minute,
 					      (int)o.second);
 			} else if (strtok_r(NULL, " \t", &saveptr) != NULL) {
-				timetravelClear();
+				timetravelClear(); // OFF 或任意非数字参数都视为取消
 				s_forceRefresh = true;
 				Serial.println("时空旅行已取消，恢复实时时钟");
 			} else {
 				Serial.println("用法: TT <年 月 日 时 分 秒> 或 TT OFF");
 			}
-		} else {
+		} else { // 设置当前 UTC 时刻
 			if (parseDoubles(saveptr, v, 6) == 6) {
 				s_nowUtc.year = (int)v[0];
 				s_nowUtc.month = (int)v[1];
@@ -167,7 +165,7 @@ void handleCommand(char *line)
 		}
 		break;
 	}
-	case 'R':
+	case 'R': // 立即重算一次
 		s_forceRefresh = true;
 		break;
 	case 'H':
@@ -182,7 +180,7 @@ void handleCommand(char *line)
 void setup()
 {
 	Serial.begin(115200);
-	delay(300);
+	delay(300); // 等串口就绪，避免开头几行日志丢失
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
 	Serial.println("阶段: 第1阶段 天文引擎+星表+GPS");
 
@@ -191,16 +189,7 @@ void setup()
 	oledInit();
 	gpsInit();
 
-	// 2. 默认观察点与时钟（GPS 定位前使用的回退值）
-	s_observer = Astronomy_MakeObserver(DEFAULT_LAT, DEFAULT_LON, DEFAULT_HEIGHT_M);
-	s_nowUtc.year = DEF_Y;
-	s_nowUtc.month = DEF_MO;
-	s_nowUtc.day = DEF_D;
-	s_nowUtc.hour = DEF_H;
-	s_nowUtc.minute = DEF_MI;
-	s_nowUtc.second = DEF_S;
-
-	// 3. 数据层自检
+	// 2. 数据层自检：目录规模应非零
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
 		      BODY_CATALOG_COUNT);
 
@@ -212,17 +201,22 @@ void loop()
 	// 0. GPS 数据读取（非阻塞 NMEA 解析）
 	gpsTick();
 
-	// 1. GPS 更新基础时间与位置（无定位时保留上次有效值或默认值）
+	// 1. GPS 更新基础时间与位置（无定位时保留上次有效值）
 	astro_utc_t gpsUtc;
 	if (gpsGetUtc(&gpsUtc)) {
 		s_nowUtc = gpsUtc;
 	}
 	astro_observer_t gpsObs;
 	if (gpsGetObserver(&gpsObs)) {
+		if (!s_gpsFirstFix) {
+			s_gpsFirstFix = true;
+			Serial.printf("[GPS] 首次定位: lat=%.4f lon=%.4f h=%.1fm\n",
+				      gpsObs.latitude, gpsObs.longitude, gpsObs.height);
+		}
 		s_observer = gpsObs;
 	}
 
-	// 2. 读取串口命令行（非阻塞）
+	// 2. 读取串口命令行（非阻塞，逐字符累积到换行为止）
 	while (Serial.available() > 0) {
 		char c = (char)Serial.read();
 		if (c == '\r')
@@ -236,11 +230,17 @@ void loop()
 		}
 	}
 
-	// 3. 低频刷新可见目标表
+	// 3. 低频刷新可见目标表：GPS 首次定位后才开始输出
 	unsigned long nowMs = millis();
 	if (s_forceRefresh || nowMs - s_lastRefreshMs >= REFRESH_INTERVAL_MS) {
 		s_lastRefreshMs = nowMs;
 		s_forceRefresh = false;
+
+		if (!s_gpsFirstFix) {
+			Serial.println("[GPS] 等待定位...");
+			return;
+		}
+
 		astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,
 						      s_nowUtc.day, s_nowUtc.hour,
 						      s_nowUtc.minute, s_nowUtc.second);
@@ -248,7 +248,7 @@ void loop()
 			      timetravelResolveObserver(s_observer));
 	}
 
-	// 4. 按键事件
+	// 4. 按键事件（消抖在 ButtonDriver 内完成）
 	ButtonId btn = buttonRead();
 	if (btn != BTN_NONE) {
 		const char* names[] = {"A", "B", "UP", "DOWN"};
@@ -256,6 +256,6 @@ void loop()
 		buttonClear();
 	}
 
-	// 5. OLED 实时刷新
+	// 5. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制
 	oledTick();
 }

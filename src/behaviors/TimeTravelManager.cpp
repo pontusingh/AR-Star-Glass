@@ -79,7 +79,4 @@ astro_observer_t timetravelResolveObserver(astro_observer_t gpsObs)
 	return gpsObs;
 }
 
-astro_time_t timetravelResolveTime(astro_time_t gpsTime)
-{
-	return timetravelResolve(gpsTime);
-}
+

@@ -23,7 +23,6 @@ bool timetravelHasLocationOverride();
 astro_observer_t timetravelGetObserverOverride();
 
 // 核心解析：把 GPS 数据解析为参与天文计算的实际数据
-astro_time_t     timetravelResolveTime(astro_time_t gpsTime);
 astro_observer_t timetravelResolveObserver(astro_observer_t gpsObs);
 
 #endif // TIME_TRAVEL_MANAGER_H

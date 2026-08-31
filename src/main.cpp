@@ -224,7 +224,7 @@ void loop()
 		astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,
 						      s_nowUtc.day, s_nowUtc.hour,
 						      s_nowUtc.minute, s_nowUtc.second);
-		reportTargets(timetravelResolveTime(baseTime),
+		reportTargets(timetravelResolve(baseTime),
 			      timetravelResolveObserver(s_observer));
 	}
 

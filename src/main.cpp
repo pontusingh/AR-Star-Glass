@@ -47,10 +47,8 @@ void reportTargets(astro_time_t effectiveTime, astro_observer_t effectiveObs)
 {
 	Serial.println("------------------------------------------------------------");
 	printEffectiveTime(effectiveTime);
-	Serial.printf(" [%s]", gpsManagerTimeTag());
-	if (timetravelHasLocationOverride()) {
-		Serial.printf(" [%s]", gpsManagerLocTag());
-	}
+	Serial.printf(" [%s]", timetravelIsActive() ? "时空旅行" : gpsManagerTimeTag());
+	Serial.printf(" [%s]", timetravelHasLocationOverride() ? "位置覆盖" : gpsManagerLocTag());
 	Serial.printf("  观察点 lat=%.4f lon=%.4f h=%.0fm\n", effectiveObs.latitude,
 		      effectiveObs.longitude, effectiveObs.height);
 

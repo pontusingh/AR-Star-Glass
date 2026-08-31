@@ -14,6 +14,10 @@ static bool s_gpsStale = false;
 static bool s_gpsNvsFallback = false;
 static bool s_staleWarned = false;
 
+static astro_observer_t s_cachedObs = {0.0, 0.0, 0.0};
+static astro_utc_t s_cachedUtc = {0, 0, 0, 0, 0, 0.0};
+static bool s_cacheValid = false;
+
 void saveNvsGpsData()
 {
     GpsData d;
@@ -51,6 +55,10 @@ bool loadNvsGpsData(astro_observer_t *obs, astro_utc_t *utc)
     utc->minute = s_prefs.getInt("gps_min", 0);
     utc->second = s_prefs.getDouble("gps_sec", 0.0);
 
+    s_cachedObs = *obs;
+    s_cachedUtc = *utc;
+    s_cacheValid = true;
+
     return true;
 }
 
@@ -71,6 +79,7 @@ void gpsManagerTick()
     bool hasObs = gpsGetObserver(&gpsObs);
 
     if (hasObs) {
+        s_cacheValid = false;
         bool wasNvsOrStale = s_gpsNvsFallback || s_gpsStale;
         if (!s_gpsFirstFix) {
             s_gpsFirstFix = true;
@@ -145,7 +154,10 @@ bool gpsManagerGetUtc(astro_utc_t *out)
         return true;
     }
     if (s_gpsFirstFix) {
-        // 从 NVS 或上次有效值回退
+        if (s_cacheValid) {
+            *out = s_cachedUtc;
+            return true;
+        }
         astro_observer_t dummy;
         astro_utc_t nvsUtc;
         if (loadNvsGpsData(&dummy, &nvsUtc)) {
@@ -165,6 +177,10 @@ bool gpsManagerGetObserver(astro_observer_t *out)
         return true;
     }
     if (s_gpsFirstFix) {
+        if (s_cacheValid) {
+            *out = s_cachedObs;
+            return true;
+        }
         astro_utc_t dummy;
         astro_observer_t nvsObs;
         if (loadNvsGpsData(&nvsObs, &dummy)) {

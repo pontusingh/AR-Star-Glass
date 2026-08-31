@@ -17,6 +17,7 @@ static bool s_staleWarned = false;
 static astro_observer_t s_cachedObs = {0.0, 0.0, 0.0};
 static astro_utc_t s_cachedUtc = {0, 0, 0, 0, 0, 0.0};
 static bool s_cacheValid = false;
+static unsigned long s_cacheTimestampMs = 0;
 
 void saveNvsGpsData()
 {
@@ -82,6 +83,7 @@ void gpsManagerTick()
         s_cachedObs = gpsObs;
         s_cachedUtc = gpsUtc;
         s_cacheValid = true;
+        s_cacheTimestampMs = millis();
         bool wasNvsOrStale = s_gpsNvsFallback || s_gpsStale;
         if (!s_gpsFirstFix) {
             s_gpsFirstFix = true;
@@ -150,22 +152,19 @@ const char* gpsManagerLocTag()
 bool gpsManagerGetUtc(astro_utc_t *out)
 {
     if (out == NULL) return false;
-    astro_utc_t gpsUtc;
-    if (gpsGetUtc(&gpsUtc)) {
-        *out = gpsUtc;
-        return true;
+    if (!s_gpsStale) {
+        astro_utc_t gpsUtc;
+        if (gpsGetUtc(&gpsUtc)) {
+            *out = gpsUtc;
+            return true;
+        }
     }
-    if (s_gpsFirstFix) {
-        if (s_cacheValid) {
-            *out = s_cachedUtc;
-            return true;
-        }
-        astro_observer_t dummy;
-        astro_utc_t nvsUtc;
-        if (loadNvsGpsData(&dummy, &nvsUtc)) {
-            *out = nvsUtc;
-            return true;
-        }
+    if (s_gpsFirstFix && s_cacheValid) {
+        unsigned long elapsedMs = millis() - s_cacheTimestampMs;
+        astro_time_t t = Astronomy_TimeFromUtc(s_cachedUtc);
+        t = Astronomy_AddDays(t, elapsedMs / 86400000.0);
+        *out = Astronomy_UtcFromTime(t);
+        return true;
     }
     return false;
 }

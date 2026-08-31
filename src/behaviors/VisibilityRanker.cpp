@@ -8,11 +8,11 @@
 #include "VisibilityRanker.h"
 
 #include "StarCatalog.h"
+#include "astronomy.h"
 
 namespace {
 
-const double ALT_WEIGHT_PER_DEG = 0.05; // 高度角→等效星等的换算权重
-const double BODY_MAG_DEFAULT = 0.0;    // 行星无静态星等，暂用 0 等参与排序
+const double ALT_WEIGHT_PER_DEG = 0.05;
 
 RankedTarget s_targets[RANKER_MAX_TARGETS];
 int s_count = 0;
@@ -81,7 +81,7 @@ void rankerUpdate(astro_time_t time, astro_observer_t observer)
 			continue;
 		s_targets[s_count].kind = TARGET_BODY;
 		s_targets[s_count].catalogIndex = i;
-		s_targets[s_count].magnitude = BODY_MAG_DEFAULT;
+		s_targets[s_count].magnitude = Astronomy_Illumination(entry.body, time).mag;
 		s_targets[s_count].altitude = altAz.altitude;
 		s_targets[s_count].azimuth = altAz.azimuth;
 		s_count++;

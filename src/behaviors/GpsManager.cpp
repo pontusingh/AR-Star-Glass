@@ -79,7 +79,9 @@ void gpsManagerTick()
     bool hasObs = gpsGetObserver(&gpsObs);
 
     if (hasObs) {
-        s_cacheValid = false;
+        s_cachedObs = gpsObs;
+        s_cachedUtc = gpsUtc;
+        s_cacheValid = true;
         bool wasNvsOrStale = s_gpsNvsFallback || s_gpsStale;
         if (!s_gpsFirstFix) {
             s_gpsFirstFix = true;

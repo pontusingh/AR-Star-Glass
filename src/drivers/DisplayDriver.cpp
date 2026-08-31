@@ -77,7 +77,6 @@ static void oledPushLines() {
  */
 static void oledRedraw() {
 	u8g2.clearBuffer();
-	u8g2.setFont(u8g2_font_wqy12_t_gb2312);
 	for (int i = 0; i < lineCount; i++) {
 		u8g2.setCursor(0, (i + 1) * 13); // wqy12 行高 ≈ 12，行间 13
 		u8g2.print(screenLines[i]);

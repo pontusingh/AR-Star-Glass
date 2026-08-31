@@ -338,37 +338,7 @@ bool gpsGetObserver(astro_observer_t *out)
     return true;
 }
 
-void gpsOverride(double lat, double lon, double height_m,
-                 int year, int month, int day,
-                 int hour, int minute, double second)
-{
-    s_gps.lat = lat;
-    s_gps.lon = lon;
-    s_gps.altitude_m = height_m;
-    s_gps.year = year;
-    s_gps.month = month;
-    s_gps.day = day;
-    s_gps.hour = hour;
-    s_gps.minute = minute;
-    s_gps.second = second;
-    s_gps.fix_valid = true;
-    s_gps.last_update_ms = millis();
-}
-
 unsigned long gpsGetLastUpdateMs()
 {
     return s_gps.last_update_ms;
-}
-
-void gpsClearOverride()
-{
-    s_gps.fix_valid = false;
-    s_gps.year = 0;
-    s_gps.month = 0;
-    s_gps.day = 0;
-    s_gps.hour = 0;
-    s_gps.minute = 0;
-    s_gps.second = 0.0;
-    s_gps.satellites = 0;
-    s_gps.last_update_ms = 0;
 }

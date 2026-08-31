@@ -1,6 +1,6 @@
 // 当前阶段：第 1 阶段 —— 天文引擎 + 星表，GPS 已接入
 // 主程序（胶水层）：setup() 初始化驱动；loop() 轮询 GPS、按键、刷新可见目标表并打印。
-// GPS 首次定位前等待，不输出天文目标表；定位后保留最后一次有效值继续工作。
+// GPS 首次定位前等待最多 30s，超时后从 NVS 加载上次定位；定位后信号丢失 30s 标注陈旧。
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
@@ -11,7 +11,7 @@
 #include <Arduino.h>
 #include <string.h>
 #include <stdlib.h>
-#include "GpsDriver.h"
+#include "GpsManager.h"
 #include "ButtonDriver.h"
 #include "DisplayDriver.h"
 #include "AstronomyEngine.h"
@@ -27,27 +27,12 @@ static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_nowUtc = {0, 0, 0, 0, 0, 0.0};
 static unsigned long s_lastRefreshMs = 0;
 static bool s_forceRefresh = false;
-static bool s_gpsFirstFix = false; // GPS 首次定位标志
 
 // ---------- 串口行输入缓冲 ----------
 static char s_lineBuf[128];
 static size_t s_lineLen = 0;
 
 namespace {
-
-// 打印时间来源标签
-const char* timeSourceTag()
-{
-	if (timetravelIsActive()) return "TT";
-	return "GPS";
-}
-
-// 打印位置来源标签
-const char* locSourceTag()
-{
-	if (timetravelHasLocationOverride()) return "P-CMD";
-	return "GPS";
-}
 
 // 把引擎时间转回 UTC 日历值并打印（用于核对有效时刻）
 void printEffectiveTime(astro_time_t t)
@@ -62,9 +47,9 @@ void reportTargets(astro_time_t effectiveTime, astro_observer_t effectiveObs)
 {
 	Serial.println("------------------------------------------------------------");
 	printEffectiveTime(effectiveTime);
-	Serial.printf(" [%s]", timeSourceTag());
+	Serial.printf(" [%s]", gpsManagerTimeTag());
 	if (timetravelHasLocationOverride()) {
-		Serial.printf(" [%s]", locSourceTag());
+		Serial.printf(" [%s]", gpsManagerLocTag());
 	}
 	Serial.printf("  观察点 lat=%.4f lon=%.4f h=%.0fm\n", effectiveObs.latitude,
 		      effectiveObs.longitude, effectiveObs.height);
@@ -187,7 +172,7 @@ void setup()
 	// 1. 初始化各驱动
 	buttonInit();
 	oledInit();
-	gpsInit();
+	gpsManagerInit();
 
 	// 2. 数据层自检：目录规模应非零
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
@@ -198,22 +183,17 @@ void setup()
 
 void loop()
 {
-	// 0. GPS 数据读取（非阻塞 NMEA 解析）
-	gpsTick();
+	// 0. GPS 管理器（驱动 + 状态机 + NVS）
+	gpsManagerTick();
 
-	// 1. GPS 更新基础时间与位置（无定位时保留上次有效值）
-	astro_utc_t gpsUtc;
-	if (gpsGetUtc(&gpsUtc)) {
-		s_nowUtc = gpsUtc;
+	// 1. 从 GpsManager 获取当前时间/位置
+	astro_utc_t utc;
+	if (gpsManagerGetUtc(&utc)) {
+		s_nowUtc = utc;
 	}
-	astro_observer_t gpsObs;
-	if (gpsGetObserver(&gpsObs)) {
-		if (!s_gpsFirstFix) {
-			s_gpsFirstFix = true;
-			Serial.printf("[GPS] 首次定位: lat=%.4f lon=%.4f h=%.1fm\n",
-				      gpsObs.latitude, gpsObs.longitude, gpsObs.height);
-		}
-		s_observer = gpsObs;
+	astro_observer_t obs;
+	if (gpsManagerGetObserver(&obs)) {
+		s_observer = obs;
 	}
 
 	// 2. 读取串口命令行（非阻塞，逐字符累积到换行为止）
@@ -230,13 +210,13 @@ void loop()
 		}
 	}
 
-	// 3. 低频刷新可见目标表：GPS 首次定位后才开始输出
+	// 3. 低频刷新可见目标表
 	unsigned long nowMs = millis();
 	if (s_forceRefresh || nowMs - s_lastRefreshMs >= REFRESH_INTERVAL_MS) {
 		s_lastRefreshMs = nowMs;
 		s_forceRefresh = false;
 
-		if (!s_gpsFirstFix) {
+		if (!gpsManagerHasValidData()) {
 			Serial.println("[GPS] 等待定位...");
 			return;
 		}

@@ -12,6 +12,7 @@ static unsigned long s_lastNvsSaveMs = 0;
 static bool s_gpsFirstFix = false;
 static bool s_gpsStale = false;
 static bool s_gpsNvsFallback = false;
+static bool s_staleWarned = false;
 
 void saveNvsGpsData()
 {
@@ -65,19 +66,23 @@ void gpsManagerTick()
     gpsTick();
 
     astro_utc_t gpsUtc;
-    bool hasUtc = gpsGetUtc(&gpsUtc);
+    (void)gpsGetUtc(&gpsUtc);
     astro_observer_t gpsObs;
     bool hasObs = gpsGetObserver(&gpsObs);
 
     if (hasObs) {
-        // 有定位
+        bool wasNvsOrStale = s_gpsNvsFallback || s_gpsStale;
         if (!s_gpsFirstFix) {
             s_gpsFirstFix = true;
             Serial.printf("[GPS] 首次定位: lat=%.4f lon=%.4f h=%.1fm\n",
                           gpsObs.latitude, gpsObs.longitude, gpsObs.height);
+        } else if (wasNvsOrStale) {
+            Serial.printf("[GPS] 定位恢复: lat=%.4f lon=%.4f h=%.1fm\n",
+                          gpsObs.latitude, gpsObs.longitude, gpsObs.height);
         }
         s_gpsStale = false;
         s_gpsNvsFallback = false;
+        s_staleWarned = false;
 
         if (millis() - s_lastNvsSaveMs >= NVS_SAVE_INTERVAL_MS) {
             saveNvsGpsData();
@@ -102,6 +107,7 @@ void gpsManagerTick()
         unsigned long lastUp = gpsGetLastUpdateMs();
         if (lastUp > 0 && millis() - lastUp > GPS_STALE_MS) {
             s_gpsStale = true;
+            s_staleWarned = true;
             Serial.println("[GPS] 定位信号丢失超过30s，使用上次数据");
         }
     }

@@ -355,6 +355,11 @@ void gpsOverride(double lat, double lon, double height_m,
     s_gps.last_update_ms = millis();
 }
 
+unsigned long gpsGetLastUpdateMs()
+{
+    return s_gps.last_update_ms;
+}
+
 void gpsClearOverride()
 {
     s_gps.fix_valid = false;

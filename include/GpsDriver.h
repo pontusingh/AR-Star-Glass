@@ -26,6 +26,8 @@ bool     gpsGetUtc(astro_utc_t *out);        // 填充 UTC 结构体
 bool     gpsGetObserver(astro_observer_t *out); // 填充观察点结构体
 
 // 强制覆盖 GPS 数据（供时空旅行管理器使用）
+unsigned long gpsGetLastUpdateMs();             // 返回上次定位更新时刻（毫秒）
+
 void     gpsOverride(double lat, double lon, double height_m,
                      int year, int month, int day,
                      int hour, int minute, double second);

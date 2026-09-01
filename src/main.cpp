@@ -238,18 +238,21 @@ void loop()
 	}
 
 	// 3b. IMU 朝向持续打印（I 命令开启），独立节奏约 5Hz，不干扰目标表
+	// 观测字段以累计帧数/复位计数为准；INT 瞬时电平窗口仅亚毫秒级，采样打印会恒为高
 	if (s_imuStream && nowMs - s_lastImuPrintMs >= 200) {
 		s_lastImuPrintMs = nowMs;
 		ImuOrientation o;
 		if (imuGetOrientation(&o)) {
 			static const char *ACC_NAMES[] = {"不可靠", "低", "中", "高"};
 			Serial.printf("[IMU] yaw=%+7.1f pitch=%+6.1f roll=%+6.1f"
-				      "  精度=%s 数据年龄=%lums\n",
+				      "  精度=%s 数据年龄=%lums 帧数=%lu 复位=%u\n",
 				      o.yaw, o.pitch, o.roll,
 				      ACC_NAMES[o.accuracy & 0x03],
-				      nowMs - o.lastUpdateMs);
+				      nowMs - o.lastUpdateMs,
+				      imuGetFrameCount(), imuGetResetCount());
 		} else {
-			Serial.println("[IMU] 暂无有效数据（初始化失败或尚未收到报告）");
+			Serial.printf("[IMU] 暂无有效数据（帧数=%lu 复位=%u）\n",
+				      imuGetFrameCount(), imuGetResetCount());
 		}
 	}
 

@@ -9,7 +9,8 @@
 // 引脚（ESP32-S3，走第二 I2C 外设 Wire1，与 OLED 的 Wire(GPIO8/9) 互不干扰）：
 //   SDA=GPIO1, SCL=GPIO2, INT=GPIO10, RST=GPIO11
 //   - I2C 地址 0x4A（BNO085 默认，ADDR 脚拉高时为 0x4B）
-//   - INT 在 I2C 模式下库用不到（轮询总线），接线留作以后"数据就绪"提示
+//   - INT 用作"数据就绪"门控：低电平=有数据待发，imuTick 只在 INT 低时读
+//     （Adafruit 库 I2C 路径盲读不看 INT，ESP32 上盲读会卡死传感器发送队列）
 //   - 总线只允许 Wire1.begin() 一次（重复 begin 锁死总线的教训见 test/oled.cpp）
 
 #define PIN_IMU_SDA 1
@@ -26,7 +27,9 @@ typedef struct {
 } ImuOrientation;
 
 bool imuInit();                            // 初始化 Wire1 + BNO085，使能旋转矢量；成功返回 true
-void imuTick();                            // loop 中每圈调用，取走新到的传感器事件
+void imuTick();                            // loop 中每圈调用：复位自愈 + INT 门控取数
 bool imuGetOrientation(ImuOrientation *out); // 收到过有效数据则拷贝输出并返回 true
+uint32_t imuGetFrameCount();               // 累计旋转矢量帧数（链路健康指标，应约 50 帧/秒）
+uint16_t imuGetResetCount();               // 传感器意外复位次数（>0 说明发生过电源/总线瞬断）
 
 #endif // IMU_DRIVER_H

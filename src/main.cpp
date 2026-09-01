@@ -1,6 +1,6 @@
 // 当前阶段：第 2 阶段 —— BNO085 硬件接入暂缓，相关活跃代码已全部注释（搜"BNO085 暂缓"恢复）；
 // 第 1 阶段天文引擎+星表+GPS 已就绪
-// 主程序（胶水层）：setup() 初始化驱动并等待 GPS 定位；loop() 轮询按键、刷新可见目标表并打印。
+// 主程序（胶水层）：setup() 初始化驱动 → 非阻塞等待 GPS 定位（轮询时 OLED 保持刷新）；loop() 按 1-5 顺序执行。
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
@@ -32,7 +32,7 @@ static bool s_forceRefresh = false;
 void setup()
 {
 	Serial.begin(115200);
-	delay(300); // 等串口就绪，避免开头几行日志丢失
+	delay(300);
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
 	Serial.println("阶段: 第2阶段 (BNO085 硬件接入暂缓，IMU 代码已注释)");
 
@@ -45,8 +45,10 @@ void setup()
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
 		      BODY_CATALOG_COUNT);
 
+	// 2. 初始化串口控制台
 	serialConsoleInit();
 
+	// 3. 等待 GPS 定位（gpsManagerStartWait 非阻塞，轮询期间 OLED 照常刷新）
 	Serial.print("[GPS] 正在获取定位...");
 	Serial.flush();
 	gpsManagerStartWait();
@@ -56,6 +58,7 @@ void setup()
 	}
 	Serial.printf(" 数据来源: %s\n", gpsManagerDataSourceTag());
 
+	// 4. 读取初始时间和位置
 	astro_utc_t utc;
 	if (gpsManagerGetUtc(&utc)) {
 		s_nowUtc = utc;
@@ -65,20 +68,23 @@ void setup()
 		s_observer = obs;
 	}
 
+	// 5. 首次打印可见目标
 	astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,
 					      s_nowUtc.day, s_nowUtc.hour,
 					      s_nowUtc.minute, s_nowUtc.second);
 	serialReportTargets(timetravelResolve(baseTime),
 			    timetravelResolveObserver(s_observer));
 
+	// 6. 首次刷新 OLED
 	oledTick();
 }
 
 void loop()
 {
+	// 1. 串口命令处理（可能通过引用修改 s_nowUtc / s_observer / s_forceRefresh）
 	serialConsoleTick(s_nowUtc, s_forceRefresh);
 
-	// 3. 低频刷新可见目标表
+	// 2. 低频刷新可见目标表
 	unsigned long nowMs = millis();
 	if (s_forceRefresh || nowMs - s_lastRefreshMs >= REFRESH_INTERVAL_MS) {
 		s_lastRefreshMs = nowMs;
@@ -93,7 +99,7 @@ void loop()
 
 	// imuTick(); // 【BNO085 暂缓】
 
-	// 4. 后台 GPS 定位等待（非阻塞，由 InputManager 状态机触发 StartWait）
+	// 3. 后台 GPS 定位等待（非阻塞，由 InputManager 状态机触发 StartWait）
 	if (gpsManagerGetWaitState() == GPS_WAIT_IN_PROGRESS) {
 		if (gpsManagerCheckFix()) {
 			astro_utc_t utc;
@@ -104,7 +110,7 @@ void loop()
 		}
 	}
 
-	// 5. 按键事件（消抖在 ButtonDriver 内完成）
+	// 4. 按键事件（消抖在 ButtonDriver 内完成）
 	ButtonId btn = buttonRead();
 	if (btn != BTN_NONE) {
 		const char* names[] = {"A", "B", "UP", "DOWN"};
@@ -117,6 +123,6 @@ void loop()
 		s_forceRefresh = true;
 	}
 
-	// 6. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制
+	// 5. OLED 实时刷新
 	oledTick();
 }

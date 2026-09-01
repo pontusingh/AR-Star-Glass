@@ -22,23 +22,27 @@
 
 static const unsigned long REFRESH_INTERVAL_MS = 1000;
 
+// ---------- 运行期状态 ----------
 static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_nowUtc = {0, 0, 0, 0, 0, 0.0};
 static unsigned long s_lastRefreshMs = 0;
 static bool s_forceRefresh = false;
 
+
 void setup()
 {
 	Serial.begin(115200);
-	delay(300);
+	delay(300); // 等串口就绪，避免开头几行日志丢失
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
 	Serial.println("阶段: 第2阶段 (BNO085 硬件接入暂缓，IMU 代码已注释)");
 
+	// 1. 初始化各驱动
 	buttonInit();
 	oledInit();
 	gpsManagerInit();
 	// imuInit(); // 【BNO085 暂缓】
 
+	// 2. 数据层自检：目录规模应非零
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
 		      BODY_CATALOG_COUNT);
 
@@ -56,13 +60,10 @@ void setup()
 		s_observer = obs;
 	}
 
-	serialConsoleInit();
-}
-
-void loop()
-{
+	// 2. 读取串口命令行（非阻塞，逐字符累积到换行为止）
 	serialConsoleTick(s_nowUtc, s_forceRefresh);
 
+	// 3. 低频刷新可见目标表
 	unsigned long nowMs = millis();
 	if (s_forceRefresh || nowMs - s_lastRefreshMs >= REFRESH_INTERVAL_MS) {
 		s_lastRefreshMs = nowMs;
@@ -75,6 +76,27 @@ void loop()
 			      timetravelResolveObserver(s_observer));
 	}
 
+	/* 【BNO085 暂缓】IMU 朝向持续打印（I 命令开启），独立节奏约 5Hz，不干扰目标表
+	// 观测字段以累计帧数/复位计数为准；INT 瞬时电平窗口仅亚毫秒级，采样打印会恒为高
+	if (s_imuStream && nowMs - s_lastImuPrintMs >= 200) {
+		s_lastImuPrintMs = nowMs;
+		ImuOrientation o;
+		if (imuGetOrientation(&o)) {
+			static const char *ACC_NAMES[] = {"不可靠", "低", "中", "高"};
+			Serial.printf("[IMU] yaw=%+7.1f pitch=%+6.1f roll=%+6.1f"
+				      "  精度=%s 数据年龄=%lums 帧数=%lu 复位=%u\n",
+				      o.yaw, o.pitch, o.roll,
+				      ACC_NAMES[o.accuracy & 0x03],
+				      nowMs - o.lastUpdateMs,
+				      imuGetFrameCount(), imuGetResetCount());
+		} else {
+			Serial.printf("[IMU] 暂无有效数据（帧数=%lu 复位=%u）\n",
+				      imuGetFrameCount(), imuGetResetCount());
+		}
+	}
+	*/
+
+	// 4. 按键事件（消抖在 ButtonDriver 内完成）
 	ButtonId btn = buttonRead();
 	if (btn != BTN_NONE) {
 		const char* names[] = {"A", "B", "UP", "DOWN"};
@@ -89,7 +111,6 @@ void loop()
 		s_forceRefresh = true;
 	}
 
-	// imuTick(); // 【BNO085 暂缓】
-
+	// 5. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制
 	oledTick();
 }

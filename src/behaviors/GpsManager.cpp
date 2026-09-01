@@ -6,6 +6,8 @@ static const unsigned long GPS_WAIT_TIMEOUT_MS = 60000;
 
 static Preferences s_prefs;
 static GpsDataSource s_dataSource = GPS_SRC_NONE;
+static GpsWaitState s_waitState = GPS_WAIT_IDLE;
+static unsigned long s_waitStartMs = 0;
 static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_utc = {0, 0, 0, 0, 0, 0.0};
 
@@ -54,46 +56,60 @@ void gpsManagerInit()
     gpsInit();
 }
 
-void gpsManagerWaitForFix()
+void gpsManagerStartWait()
 {
-    unsigned long startMs = millis();
-    s_dataSource = GPS_SRC_NONE;
+    s_waitStartMs = millis();
+    s_waitState   = GPS_WAIT_IN_PROGRESS;
+    s_dataSource  = GPS_SRC_NONE;
+}
 
-    while (millis() - startMs < GPS_WAIT_TIMEOUT_MS) {
-        gpsTick();
+bool gpsManagerCheckFix()
+{
+    if (s_waitState != GPS_WAIT_IN_PROGRESS) return true;
 
-        if (gpsHasFix()) {
-            GpsData d;
-            if (gpsGetData(&d) && d.lat != 0.0 && d.lon != 0.0) {
-                s_observer.latitude  = d.lat;
-                s_observer.longitude = d.lon;
-                s_observer.height    = d.altitude_m;
-                s_utc.year   = d.year;
-                s_utc.month  = d.month;
-                s_utc.day    = d.day;
-                s_utc.hour   = d.hour;
-                s_utc.minute = d.minute;
-                s_utc.second = d.second;
-                s_dataSource = GPS_SRC_GPS;
-                saveNvsGpsData();
-                Serial.printf("[GPS] 定位成功: lat=%.4f lon=%.4f h=%.1fm\n",
-                              s_observer.latitude, s_observer.longitude, s_observer.height);
-                return;
-            }
+    gpsTick();
+
+    if (gpsHasFix()) {
+        GpsData d;
+        if (gpsGetData(&d) && d.lat != 0.0 && d.lon != 0.0) {
+            s_observer.latitude  = d.lat;
+            s_observer.longitude = d.lon;
+            s_observer.height    = d.altitude_m;
+            s_utc.year   = d.year;
+            s_utc.month  = d.month;
+            s_utc.day    = d.day;
+            s_utc.hour   = d.hour;
+            s_utc.minute = d.minute;
+            s_utc.second = d.second;
+            s_dataSource = GPS_SRC_GPS;
+            saveNvsGpsData();
+            Serial.printf("[GPS] 定位成功: lat=%.4f lon=%.4f h=%.1fm\n",
+                          s_observer.latitude, s_observer.longitude, s_observer.height);
+            s_waitState = GPS_WAIT_DONE;
+            return true;
         }
-        delay(10);
     }
 
-    Serial.println("[GPS] GPS 定位超时，尝试加载 NVS...");
-
-    if (loadNvsGpsData()) {
-        s_dataSource = GPS_SRC_NVS_FALLBACK;
-        Serial.printf("[NVS] 加载上次定位: lat=%.4f lon=%.4f\n",
-                      s_observer.latitude, s_observer.longitude);
-    } else {
-        s_dataSource = GPS_SRC_PLACEHOLDER;
-        Serial.println("[GPS] 无 NVS 数据，使用占位坐标 (0,0,0)");
+    if (millis() - s_waitStartMs >= GPS_WAIT_TIMEOUT_MS) {
+        Serial.println("[GPS] GPS 定位超时，尝试加载 NVS...");
+        if (loadNvsGpsData()) {
+            s_dataSource = GPS_SRC_NVS_FALLBACK;
+            Serial.printf("[NVS] 加载上次定位: lat=%.4f lon=%.4f\n",
+                          s_observer.latitude, s_observer.longitude);
+        } else {
+            s_dataSource = GPS_SRC_PLACEHOLDER;
+            Serial.println("[GPS] 无 NVS 数据，使用占位坐标 (0,0,0)");
+        }
+        s_waitState = GPS_WAIT_DONE;
+        return true;
     }
+
+    return false;
+}
+
+GpsWaitState gpsManagerGetWaitState()
+{
+    return s_waitState;
 }
 
 bool gpsManagerHasFix()

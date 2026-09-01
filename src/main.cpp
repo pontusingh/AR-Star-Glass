@@ -49,7 +49,11 @@ void setup()
 
 	Serial.print("[GPS] 正在获取定位...");
 	Serial.flush();
-	gpsManagerWaitForFix();
+	gpsManagerStartWait();
+	while (!gpsManagerCheckFix()) {
+		oledTick();
+		delay(10);
+	}
 	Serial.printf(" 数据来源: %s\n", gpsManagerDataSourceTag());
 
 	astro_utc_t utc;
@@ -89,21 +93,30 @@ void loop()
 
 	// imuTick(); // 【BNO085 暂缓】
 
-	// 4. 按键事件（消抖在 ButtonDriver 内完成）
+	// 4. 后台 GPS 定位等待（非阻塞，由 InputManager 状态机触发 StartWait）
+	if (gpsManagerGetWaitState() == GPS_WAIT_IN_PROGRESS) {
+		if (gpsManagerCheckFix()) {
+			astro_utc_t utc;
+			if (gpsManagerGetUtc(&utc)) s_nowUtc = utc;
+			astro_observer_t obs;
+			if (gpsManagerGetObserver(&obs)) s_observer = obs;
+			s_forceRefresh = true;
+		}
+	}
+
+	// 5. 按键事件（消抖在 ButtonDriver 内完成）
 	ButtonId btn = buttonRead();
 	if (btn != BTN_NONE) {
 		const char* names[] = {"A", "B", "UP", "DOWN"};
-		Serial.printf("按键[%s] 按下，重新获取GPS定位...\n", names[btn]);
+		Serial.printf("按键[%s] 按下\n", names[btn]);
 		buttonClear();
-		gpsManagerWaitForFix();
-		Serial.printf("[GPS] 数据来源: %s\n", gpsManagerDataSourceTag());
-		astro_utc_t utc;
-		if (gpsManagerGetUtc(&utc)) s_nowUtc = utc;
-		astro_observer_t obs;
-		if (gpsManagerGetObserver(&obs)) s_observer = obs;
+		// TODO: 待 InputManager 状态机决定何时触发 GPS 重新定位
+		// if (gpsManagerGetWaitState() == GPS_WAIT_IDLE) {
+		//     gpsManagerStartWait();
+		// }
 		s_forceRefresh = true;
 	}
 
-	// 5. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制
+	// 6. OLED 实时刷新：数据侧仅置脏标志，此处统一拉起绘制
 	oledTick();
 }

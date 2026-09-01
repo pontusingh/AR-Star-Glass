@@ -42,9 +42,10 @@ void setup()
 	gpsManagerInit();
 	// imuInit(); // 【BNO085 暂缓】
 
-	// 2. 数据层自检：目录规模应非零
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
 		      BODY_CATALOG_COUNT);
+
+	serialConsoleInit();
 
 	Serial.print("[GPS] 正在获取定位...");
 	Serial.flush();
@@ -60,7 +61,17 @@ void setup()
 		s_observer = obs;
 	}
 
-	// 2. 读取串口命令行（非阻塞，逐字符累积到换行为止）
+	astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,
+					      s_nowUtc.day, s_nowUtc.hour,
+					      s_nowUtc.minute, s_nowUtc.second);
+	serialReportTargets(timetravelResolve(baseTime),
+			    timetravelResolveObserver(s_observer));
+
+	oledTick();
+}
+
+void loop()
+{
 	serialConsoleTick(s_nowUtc, s_forceRefresh);
 
 	// 3. 低频刷新可见目标表
@@ -76,25 +87,7 @@ void setup()
 			      timetravelResolveObserver(s_observer));
 	}
 
-	/* 【BNO085 暂缓】IMU 朝向持续打印（I 命令开启），独立节奏约 5Hz，不干扰目标表
-	// 观测字段以累计帧数/复位计数为准；INT 瞬时电平窗口仅亚毫秒级，采样打印会恒为高
-	if (s_imuStream && nowMs - s_lastImuPrintMs >= 200) {
-		s_lastImuPrintMs = nowMs;
-		ImuOrientation o;
-		if (imuGetOrientation(&o)) {
-			static const char *ACC_NAMES[] = {"不可靠", "低", "中", "高"};
-			Serial.printf("[IMU] yaw=%+7.1f pitch=%+6.1f roll=%+6.1f"
-				      "  精度=%s 数据年龄=%lums 帧数=%lu 复位=%u\n",
-				      o.yaw, o.pitch, o.roll,
-				      ACC_NAMES[o.accuracy & 0x03],
-				      nowMs - o.lastUpdateMs,
-				      imuGetFrameCount(), imuGetResetCount());
-		} else {
-			Serial.printf("[IMU] 暂无有效数据（帧数=%lu 复位=%u）\n",
-				      imuGetFrameCount(), imuGetResetCount());
-		}
-	}
-	*/
+	// imuTick(); // 【BNO085 暂缓】
 
 	// 4. 按键事件（消抖在 ButtonDriver 内完成）
 	ButtonId btn = buttonRead();

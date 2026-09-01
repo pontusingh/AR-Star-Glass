@@ -118,7 +118,7 @@ static void parseGga(const char *line)
     const char *f_alt  = nmeaField(line, 9);
 
     double rawLat, rawLon, alt;
-    int fix, sats;
+    int fix;
     double timeVal;
 
     if (!parseFieldInt(f_fix, &fix)) return;
@@ -130,7 +130,6 @@ static void parseGga(const char *line)
     if (!parseFieldDouble(f_lat, &rawLat)) return;
     if (!parseFieldDouble(f_lon, &rawLon)) return;
     if (!parseFieldDouble(f_alt, &alt)) return;
-    if (!parseFieldInt(f_sats, &sats)) sats = 0;
 
     char ns = fieldChar(f_ns, 0);
     char ew = fieldChar(f_ew, 0);
@@ -141,17 +140,13 @@ static void parseGga(const char *line)
     s_gps.lon = nmeaLonToDeg(rawLon, ew);
     s_gps.altitude_m = alt;
     s_gps.fix_valid = true;
-    s_gps.satellites = sats;
 
-    // 从 GGA 提取时间（hhmmss.ss）
     if (parseFieldDouble(f_time, &timeVal)) {
         int hhmmss = (int)timeVal;
         s_gps.hour = hhmmss / 10000;
         s_gps.minute = (hhmmss / 100) % 100;
         s_gps.second = timeVal - (int)(timeVal / 100.0) * 100.0;
     }
-
-    s_gps.last_update_ms = millis();
 }
 
 // $GNRMC
@@ -164,14 +159,12 @@ static void parseRmc(const char *line)
     const char *f_ns     = nmeaField(line, 4);
     const char *f_lon    = nmeaField(line, 5);
     const char *f_ew     = nmeaField(line, 6);
-    const char *f_speed  = nmeaField(line, 7);
-    const char *f_course = nmeaField(line, 8);
     const char *f_date   = nmeaField(line, 9);
 
     // 状态 A = 有效
     if (fieldChar(f_status, 0) != 'A') return;
 
-    double rawLat, rawLon, speed, course, timeVal;
+    double rawLat, rawLon, timeVal;
     int dateVal;
 
     if (!parseFieldDouble(f_lat, &rawLat)) return;
@@ -185,12 +178,6 @@ static void parseRmc(const char *line)
     s_gps.lon = nmeaLonToDeg(rawLon, ew);
     s_gps.fix_valid = true;
 
-    if (parseFieldDouble(f_speed, &speed))
-        s_gps.speed_kn = speed;
-    if (parseFieldDouble(f_course, &course))
-        s_gps.course_deg = course;
-
-    // 时间
     if (parseFieldDouble(f_time, &timeVal)) {
         int hhmmss = (int)timeVal;
         s_gps.hour = hhmmss / 10000;
@@ -198,14 +185,11 @@ static void parseRmc(const char *line)
         s_gps.second = timeVal - (int)(timeVal / 100.0) * 100.0;
     }
 
-    // 日期 ddmmyy
     if (parseFieldInt(f_date, &dateVal)) {
         s_gps.day = dateVal / 10000;
         s_gps.month = (dateVal / 100) % 100;
         s_gps.year = 2000 + (dateVal % 100);
     }
-
-    s_gps.last_update_ms = millis();
 }
 
 // $GNZDA
@@ -336,9 +320,4 @@ bool gpsGetObserver(astro_observer_t *out)
     out->longitude = s_gps.lon;
     out->height    = s_gps.altitude_m;
     return true;
-}
-
-unsigned long gpsGetLastUpdateMs()
-{
-    return s_gps.last_update_ms;
 }

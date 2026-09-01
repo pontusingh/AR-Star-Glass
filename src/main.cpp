@@ -1,5 +1,5 @@
-// 当前阶段：第 1 阶段 —— 天文引擎 + 星表，GPS 已接入
-// 主程序（胶水层）：setup() 初始化驱动；loop() 轮询 GPS、按键、刷新可见目标表并打印。
+// 当前阶段：第 2 阶段 —— 朝向接入（BNO085 快速验证）；第 1 阶段天文引擎+星表+GPS 已就绪
+// 主程序（胶水层）：setup() 初始化驱动；loop() 轮询 GPS、IMU、按键、刷新可见目标表并打印。
 // GPS 首次定位前等待最多 30s，超时后从 NVS 加载上次定位；定位后信号丢失 30s 标注陈旧。
 //
 // 串口命令（115200，行尾换行）：
@@ -8,12 +8,14 @@
 //   T <年 月 日 时 分 秒>      设置当前 UTC 时刻（覆盖 GPS 时间）
 //   TT <年 月 日 时 分 秒>     开启时空旅行覆盖；TT OFF 取消
 //   R                          立即重算并打印一次
+//   I                          切换 IMU 朝向持续打印（约 5Hz，再按一次停止）
 #include <Arduino.h>
 #include <string.h>
 #include <stdlib.h>
 #include "GpsManager.h"
 #include "ButtonDriver.h"
 #include "DisplayDriver.h"
+#include "ImuDriver.h"
 #include "AstronomyEngine.h"
 #include "StarCatalog.h"
 #include "VisibilityRanker.h"
@@ -27,6 +29,8 @@ static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_nowUtc = {0, 0, 0, 0, 0, 0.0};
 static unsigned long s_lastRefreshMs = 0;
 static bool s_forceRefresh = false;
+static bool s_imuStream = false;                 // I 命令切换：持续打印 IMU 朝向
+static unsigned long s_lastImuPrintMs = 0;       // IMU 打印的独立节奏（不干扰目标表）
 
 // ---------- 串口行输入缓冲 ----------
 static char s_lineBuf[128];
@@ -89,7 +93,7 @@ int parseDoubles(char *saveptr, double *out, int maxCount)
 void printHelp()
 {
 	Serial.println("命令: H=帮助 P=<纬度> <经度> T=<年 月 日 时 分 秒> "
-		       "TT=<年 月 日 时 分 秒|OFF> R=立即刷新");
+		       "TT=<年 月 日 时 分 秒|OFF> R=立即刷新 I=IMU朝向打印");
 }
 
 // 处理一条完整命令行（已含结尾 \\0）
@@ -151,6 +155,11 @@ void handleCommand(char *line)
 	case 'R': // 立即重算一次
 		s_forceRefresh = true;
 		break;
+	case 'I': // 切换 IMU 朝向持续打印，再按一次停止
+		s_imuStream = !s_imuStream;
+		Serial.println(s_imuStream ? "[IMU] 开始持续打印朝向（再按 I 停止）"
+					   : "[IMU] 停止打印");
+		break;
 	case 'H':
 	default:
 		printHelp();
@@ -165,12 +174,13 @@ void setup()
 	Serial.begin(115200);
 	delay(300); // 等串口就绪，避免开头几行日志丢失
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
-	Serial.println("阶段: 第1阶段 天文引擎+星表+GPS");
+	Serial.println("阶段: 第2阶段 朝向接入 (BNO085 快速验证)");
 
 	// 1. 初始化各驱动
 	buttonInit();
 	oledInit();
 	gpsManagerInit();
+	imuInit();
 
 	// 2. 数据层自检：目录规模应非零
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
@@ -181,8 +191,9 @@ void setup()
 
 void loop()
 {
-	// 0. GPS 管理器（驱动 + 状态机 + NVS）
+	// 0. GPS 管理器（驱动 + 状态机 + NVS）与 IMU 轮询
 	gpsManagerTick();
+	imuTick();
 
 	// 1. 从 GpsManager 获取当前时间/位置
 	astro_utc_t utc;
@@ -224,6 +235,22 @@ void loop()
 						      s_nowUtc.minute, s_nowUtc.second);
 		reportTargets(timetravelResolve(baseTime),
 			      timetravelResolveObserver(s_observer));
+	}
+
+	// 3b. IMU 朝向持续打印（I 命令开启），独立节奏约 5Hz，不干扰目标表
+	if (s_imuStream && nowMs - s_lastImuPrintMs >= 200) {
+		s_lastImuPrintMs = nowMs;
+		ImuOrientation o;
+		if (imuGetOrientation(&o)) {
+			static const char *ACC_NAMES[] = {"不可靠", "低", "中", "高"};
+			Serial.printf("[IMU] yaw=%+7.1f pitch=%+6.1f roll=%+6.1f"
+				      "  精度=%s 数据年龄=%lums\n",
+				      o.yaw, o.pitch, o.roll,
+				      ACC_NAMES[o.accuracy & 0x03],
+				      nowMs - o.lastUpdateMs);
+		} else {
+			Serial.println("[IMU] 暂无有效数据（初始化失败或尚未收到报告）");
+		}
 	}
 
 	// 4. 按键事件（消抖在 ButtonDriver 内完成）

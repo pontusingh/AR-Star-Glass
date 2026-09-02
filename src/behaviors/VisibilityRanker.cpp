@@ -16,7 +16,7 @@ const double ALT_WEIGHT_PER_DEG = 0.05;
 
 RankedTarget s_targets[RANKER_MAX_TARGETS];
 int s_count = 0;
-double s_horizonMinDeg = 0.0; // 默认只要在地平线以上就收录
+double s_horizonMinDeg = 10.0; // 默认高度角 > 10° 才算可见（避开地平线附近大气/遮挡）
 
 // 插入排序：n 很小（≤72），无需引入 qsort 的函数指针开销
 void sortTargets(RankedTarget *arr, int n)

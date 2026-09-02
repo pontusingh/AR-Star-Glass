@@ -4,11 +4,12 @@
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
-//   P <纬度> <经度>            设置观察点覆盖（时空旅行位置覆盖）
+//   P <纬度> <经度> [高度米]    设置观察点覆盖（时空旅行位置覆盖）
 //   T <年 月 日 时 分 秒>      设置当前 UTC 时刻（覆盖 GPS 时间）
 //   TT <年 月 日 时 分 秒>     开启时空旅行覆盖；TT OFF 取消
-//   R                          立即重算并打印一次
-//   （I 命令=IMU 朝向打印，随 BNO085 暂缓一并注释）
+//   O <yaw> <pitch> <roll>     注入朝向（覆盖真实 IMU）；O OFF 取消
+//   I                          打印当前朝向（注入/IMU）
+//   A / R                      打印一次可见 Top10（含高度、方位角），不连续打印
 #include <Arduino.h>
 #include "GpsManager.h"
 #include "ButtonDriver.h"
@@ -20,12 +21,9 @@
 #include "TimeTravelManager.h"
 #include "SerialConsole.h"
 
-static const unsigned long REFRESH_INTERVAL_MS = 1000;
-
 // ---------- 运行期状态 ----------
 static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_nowUtc = {0, 0, 0, 0, 0, 0.0};
-static unsigned long s_lastRefreshMs = 0;
 static bool s_forceRefresh = false;
 
 
@@ -84,10 +82,8 @@ void loop()
 	// 1. 串口命令处理（可能通过引用修改 s_nowUtc / s_observer / s_forceRefresh）
 	serialConsoleTick(s_nowUtc, s_forceRefresh);
 
-	// 2. 低频刷新可见目标表
-	unsigned long nowMs = millis();
-	if (s_forceRefresh || nowMs - s_lastRefreshMs >= REFRESH_INTERVAL_MS) {
-		s_lastRefreshMs = nowMs;
+	// 2. 按需打印可见目标表（A/R 命令或注入变更后触发，不自动连续打印）
+	if (s_forceRefresh) {
 		s_forceRefresh = false;
 
 		astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,

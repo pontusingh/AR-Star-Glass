@@ -1,4 +1,5 @@
 #include "SerialConsole.h"
+#include "OrientationManager.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -45,22 +46,56 @@ void serialReportTargets(astro_time_t effectiveTime, astro_observer_t effectiveO
 	}
 }
 
-static int parseDoubles(char *saveptr, double *out, int maxCount)
+// 把行内剩余字段拆成 token 数组，返回个数（strtok_r 状态由 saveptr 维护）
+static int splitTokens(char **saveptr, char *tokens[], int maxTokens)
 {
-	int count = 0;
-	while (count < maxCount) {
-		char *tok = strtok_r(NULL, " \t", &saveptr);
+	int n = 0;
+	while (n < maxTokens) {
+		char *tok = strtok_r(NULL, " \t", saveptr);
 		if (tok == NULL)
 			break;
-		out[count++] = strtod(tok, NULL);
+		tokens[n++] = tok;
 	}
-	return count;
+	return n;
+}
+
+// 大小写不敏感比较
+static bool tokenEqualsCi(const char *a, const char *b)
+{
+	while (*a && *b) {
+		char ca = *a, cb = *b;
+		if (ca >= 'A' && ca <= 'Z') ca += 32;
+		if (cb >= 'A' && cb <= 'Z') cb += 32;
+		if (ca != cb) return false;
+		a++;
+		b++;
+	}
+	return *a == *b;
+}
+
+// 严格解析一个 token 为 double：必须整体可解析（不允许 "OFF" 之类被 strtod 当 0.0）
+static bool parseTokenDouble(const char *tok, double *out)
+{
+	if (tok == NULL || *tok == '\0')
+		return false;
+	char *end = NULL;
+	double v = strtod(tok, &end);
+	if (end == tok || *end != '\0')
+		return false;
+	*out = v;
+	return true;
 }
 
 static void printHelp()
 {
-	Serial.println("命令: H=帮助 P=<纬度> <经度> T=<年 月 日 时 分 秒> "
-		       "TT=<年 月 日 时 分 秒|OFF> R=立即刷新");
+	Serial.println("命令:");
+	Serial.println("  H                                  帮助");
+	Serial.println("  P <纬度> <经度> [高度米]            位置覆盖");
+	Serial.println("  T <年 月 日 时 分 秒>              设置当前 UTC");
+	Serial.println("  TT <年 月 日 时 分 秒>             时空旅行覆盖；TT OFF 取消");
+	Serial.println("  O <yaw> <pitch> <roll>             注入朝向；O OFF 取消");
+	Serial.println("  I                                  打印当前朝向");
+	Serial.println("  A / R                              打印一次可见 Top10（含高度/方位角）");
 }
 
 static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
@@ -69,54 +104,110 @@ static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
 	char *cmd = strtok_r(line, " \t", &saveptr);
 	if (cmd == NULL)
 		return;
-	double v[6];
+
+	char *tokens[10];
+	int ntok = splitTokens(&saveptr, tokens, 10);
 
 	switch (cmd[0]) {
 	case 'P': {
-		if (parseDoubles(saveptr, v, 2) == 2) {
-			timetravelOverrideObserver(v[0], v[1], 0.0);
+		double v[3];
+		bool ok = ntok >= 2 && parseTokenDouble(tokens[0], &v[0]) &&
+			  parseTokenDouble(tokens[1], &v[1]) &&
+			  (ntok < 3 || parseTokenDouble(tokens[2], &v[2]));
+		if (ok) {
+			double h = (ntok >= 3) ? v[2] : 0.0;
+			timetravelOverrideObserver(v[0], v[1], h);
 			forceRefresh = true;
-			Serial.printf("位置覆盖已生效: lat=%.4f lon=%.4f\n", v[0], v[1]);
+			Serial.printf("位置覆盖已生效: lat=%.4f lon=%.4f h=%.0fm\n", v[0], v[1], h);
 		} else {
-			Serial.println("用法: P <纬度> <经度>");
+			Serial.println("用法: P <纬度> <经度> [高度米]");
 		}
 		break;
 	}
 	case 'T': {
 		if (cmd[1] == 'T') {
-			if (parseDoubles(saveptr, v, 6) == 6) {
-				timetravelSet((int)v[0], (int)v[1], (int)v[2], (int)v[3],
-					      (int)v[4], v[5]);
-				forceRefresh = true;
-				astro_utc_t o = timetravelGetOverride();
-				Serial.printf("时空旅行生效: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-					      o.year, o.month, o.day, o.hour, o.minute,
-					      (int)o.second);
-			} else if (strtok_r(NULL, " \t", &saveptr) != NULL) {
+			if (ntok == 1 && tokenEqualsCi(tokens[0], "OFF")) {
 				timetravelClear();
 				forceRefresh = true;
 				Serial.println("时空旅行已取消，恢复实时时钟");
+			} else if (ntok == 6) {
+				double v[6];
+				bool ok = true;
+				for (int i = 0; i < 6; i++)
+					ok = ok && parseTokenDouble(tokens[i], &v[i]);
+				if (ok) {
+					timetravelSet((int)v[0], (int)v[1], (int)v[2],
+						      (int)v[3], (int)v[4], v[5]);
+					forceRefresh = true;
+					astro_utc_t o = timetravelGetOverride();
+					Serial.printf("时空旅行生效: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
+						      o.year, o.month, o.day, o.hour, o.minute,
+						      (int)o.second);
+				} else {
+					Serial.println("用法: TT <年 月 日 时 分 秒> 或 TT OFF");
+				}
 			} else {
 				Serial.println("用法: TT <年 月 日 时 分 秒> 或 TT OFF");
 			}
 		} else {
-			if (parseDoubles(saveptr, v, 6) == 6) {
-				nowUtc.year = (int)v[0];
-				nowUtc.month = (int)v[1];
-				nowUtc.day = (int)v[2];
-				nowUtc.hour = (int)v[3];
-				nowUtc.minute = (int)v[4];
-				nowUtc.second = v[5];
-				forceRefresh = true;
-				Serial.printf("当前 UTC 已设为 %04d-%02d-%02d %02d:%02d:%02d\n",
-					      nowUtc.year, nowUtc.month, nowUtc.day,
-					      nowUtc.hour, nowUtc.minute, (int)nowUtc.second);
+			if (ntok == 6) {
+				double v[6];
+				bool ok = true;
+				for (int i = 0; i < 6; i++)
+					ok = ok && parseTokenDouble(tokens[i], &v[i]);
+				if (ok) {
+					nowUtc.year = (int)v[0];
+					nowUtc.month = (int)v[1];
+					nowUtc.day = (int)v[2];
+					nowUtc.hour = (int)v[3];
+					nowUtc.minute = (int)v[4];
+					nowUtc.second = v[5];
+					forceRefresh = true;
+					Serial.printf("当前 UTC 已设为 %04d-%02d-%02d %02d:%02d:%02d\n",
+						      nowUtc.year, nowUtc.month, nowUtc.day,
+						      nowUtc.hour, nowUtc.minute, (int)nowUtc.second);
+				} else {
+					Serial.println("用法: T <年 月 日 时 分 秒>");
+				}
 			} else {
 				Serial.println("用法: T <年 月 日 时 分 秒>");
 			}
 		}
 		break;
 	}
+	case 'O': {
+		if (ntok == 1 && tokenEqualsCi(tokens[0], "OFF")) {
+			orientationClearOverride();
+			Serial.println("朝向注入已取消");
+		} else if (ntok == 3) {
+			double v[3];
+			bool ok = true;
+			for (int i = 0; i < 3; i++)
+				ok = ok && parseTokenDouble(tokens[i], &v[i]);
+			if (ok) {
+				orientationSetOverride((float)v[0], (float)v[1], (float)v[2]);
+				Serial.printf("朝向注入已生效: yaw=%.1f pitch=%.1f roll=%.1f\n",
+					      v[0], v[1], v[2]);
+			} else {
+				Serial.println("用法: O <yaw> <pitch> <roll> 或 O OFF");
+			}
+		} else {
+			Serial.println("用法: O <yaw> <pitch> <roll> 或 O OFF");
+		}
+		break;
+	}
+	case 'I': {
+		ImuOrientation o;
+		if (orientationGet(&o)) {
+			Serial.printf("朝向: yaw=%+.1f pitch=%+.1f roll=%+.1f 精度=%u [%s]\n",
+				      o.yaw, o.pitch, o.roll, o.accuracy,
+				      orientationHasOverride() ? "注入" : "IMU");
+		} else {
+			Serial.println("朝向: 无数据（IMU 未接，请用 O <yaw> <pitch> <roll> 注入）");
+		}
+		break;
+	}
+	case 'A':
 	case 'R':
 		forceRefresh = true;
 		break;

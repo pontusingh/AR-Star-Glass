@@ -1,19 +1,15 @@
 // 行为层实现：模式状态机与按键路由（第 5 阶段）。
-// 反馈全部走串口：每次显示变化打印当前页面 + 提示行；数据页的 ranker 由 main 刷新后重绘。
+// 只负责状态与路由，不渲染（渲染在 RenderManager）。
 #include "InputManager.h"
 
 #include "GpsManager.h"
 #include "VisibilityRanker.h"
-#include "StarCatalog.h"
 #include "TimeTravelManager.h"
 #include "CalibrationManager.h"
-#include "OrientationManager.h"
 
 namespace {
 
 // ---------- 内部状态 ----------
-typedef enum { CAL_BROWSE, CAL_SELECTED, CAL_DONE } CalPhase;
-
 const int MENU_COUNT = 4;                 // 定位/校准/观星/时空旅行
 const int CAL_TOP_N = 5;                  // 校准页展示前 N 颗好找天体
 const int TT_FIELD_COUNT = 5;             // 年/月/日/时/分
@@ -41,28 +37,6 @@ int clampInt(int v, int lo, int hi)
 	if (v < lo) return lo;
 	if (v > hi) return hi;
 	return v;
-}
-
-double wrapDeg(double deg)
-{
-	while (deg > 180.0) deg -= 360.0;
-	while (deg < -180.0) deg += 360.0;
-	return deg;
-}
-
-void printTargetName(const RankedTarget *t)
-{
-	if (t->kind == TARGET_STAR)
-		Serial.print(STAR_CATALOG[t->catalogIndex].nameAscii);
-	else
-		Serial.print(BODY_CATALOG[t->catalogIndex].nameAscii);
-}
-
-void printTargetLine(int idx, const RankedTarget *t, bool cursor)
-{
-	Serial.printf("%c %2d  ", cursor ? '>' : ' ', idx + 1);
-	printTargetName(t);
-	Serial.printf("  方位%+6.1f 高度%+6.1f\n", t->azimuth, t->altitude);
 }
 
 void gotoMenu()
@@ -111,130 +85,6 @@ void enterTimeTravel()
 	s_ttFieldCursor = 0;
 	s_ttBuffer = timetravelIsActive() ? timetravelGetOverride() : s_baseTime;
 	markRender();
-}
-
-// ---------- 页面渲染 ----------
-void renderMenu()
-{
-	Serial.println("===== 模式选择 =====");
-	static const char *items[] = {"定位", "校准", "观星", "时空旅行"};
-	for (int i = 0; i < MENU_COUNT; i++)
-		Serial.printf("%c %s\n", (i == s_menuCursor) ? '>' : ' ', items[i]);
-	Serial.println("UP/DOWN 选择   A 进入");
-}
-
-void renderLocation()
-{
-	Serial.println("===== 定位 =====");
-	Serial.printf("状态: %s\n", gpsManagerStatusTag());
-	astro_observer_t obs;
-	if (gpsManagerGetLocation(&obs))
-		Serial.printf("位置: lat=%.4f lon=%.4f h=%.0fm\n", obs.latitude, obs.longitude, obs.height);
-	else
-		Serial.println("位置: 搜索中...");
-	astro_utc_t utc;
-	if (gpsManagerGetUtc(&utc))
-		Serial.printf("时间: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-			      utc.year, utc.month, utc.day, utc.hour, utc.minute, (int)utc.second);
-	Serial.println("A 重新定位   B 返回");
-}
-
-void renderCalibrate()
-{
-	if (s_calPhase == CAL_BROWSE) {
-		Serial.println("===== 校准（单点验证） =====");
-		Serial.println("选择一颗好找的天体:");
-		int n = rankerCount();
-		int topN = n < CAL_TOP_N ? n : CAL_TOP_N;
-		if (topN == 0) {
-			Serial.println("  （当前无可选天体）");
-		} else {
-			for (int i = 0; i < topN; i++)
-				printTargetLine(i, rankerAt(i), i == s_listCursor);
-		}
-		double azRes, altRes;
-		if (calibrationLoadLast(&azRes, &altRes))
-			Serial.printf("上次校准残差: 方位%+.1f 高度%+.1f\n", azRes, altRes);
-		Serial.println("UP/DOWN 切换   A 选择   B 返回");
-	} else if (s_calPhase == CAL_SELECTED) {
-		Serial.println("===== 校准（已选目标） =====");
-		const RankedTarget *t = rankerAt(s_selectedTarget);
-		if (t != NULL) {
-			Serial.print("目标: ");
-			printTargetName(t);
-			Serial.printf("  方位%+.1f 高度%+.1f\n", t->azimuth, t->altitude);
-		}
-		Serial.println("A 校准（记录瞄准并比对）   B 返回");
-	} else { // CAL_DONE
-		Serial.println("===== 校准 =====");
-		Serial.println("已校准（残差已写入闪存）");
-		Serial.println("3 秒后返回主菜单，按 B 立即返回");
-	}
-}
-
-void renderObserveLive()
-{
-	Serial.println("===== 观星 · 直接观星 =====");
-	Serial.println("（FOV 内星名渲染待阶段3 RenderManager）");
-	Serial.println("A 推荐名录   B 返回");
-}
-
-void renderObserveList()
-{
-	Serial.println("===== 观星 · 推荐名录 =====");
-	int n = rankerCount();
-	if (n == 0) {
-		Serial.println("  （当前无可选目标）");
-	} else {
-		for (int i = 0; i < n; i++)
-			printTargetLine(i, rankerAt(i), i == s_listCursor);
-	}
-	Serial.println("UP/DOWN 浏览   A 选中   B 返回");
-}
-
-void renderGuide()
-{
-	Serial.println("===== 观星 · 转向指导 =====");
-	const RankedTarget *t = rankerAt(s_selectedTarget);
-	if (t == NULL) {
-		Serial.println("（无选中目标）");
-	} else {
-		Serial.print("目标: ");
-		printTargetName(t);
-		Serial.printf("  方位%+.1f 高度%+.1f\n", t->azimuth, t->altitude);
-		ImuOrientation o;
-		if (orientationGet(&o)) {
-			double daz = wrapDeg(t->azimuth - o.yaw);
-			Serial.printf("当前 yaw=%+.1f, 水平需转 %+.1f（%s）\n",
-				      o.yaw, daz, daz >= 0 ? "向右" : "向左");
-		} else {
-			Serial.println("（无朝向数据，无法计算箭头）");
-		}
-	}
-	Serial.println("B 返回");
-}
-
-void renderTtSelect()
-{
-	Serial.println("===== 时空旅行 · 选择字段 =====");
-	static const char *fields[] = {"年", "月", "日", "时", "分"};
-	int vals[] = {s_ttBuffer.year, s_ttBuffer.month, s_ttBuffer.day,
-		      s_ttBuffer.hour, s_ttBuffer.minute};
-	for (int i = 0; i < TT_FIELD_COUNT; i++)
-		Serial.printf("%c %s: %d\n", (i == s_ttFieldCursor) ? '>' : ' ', fields[i], vals[i]);
-	Serial.printf("%c 确认启动\n", (s_ttFieldCursor == TT_CONFIRM_INDEX) ? '>' : ' ');
-	Serial.println("UP/DOWN 选字段   A 进入/确认   B 返回");
-}
-
-void renderTtEdit()
-{
-	static const char *fields[] = {"年", "月", "日", "时", "分"};
-	int vals[] = {s_ttBuffer.year, s_ttBuffer.month, s_ttBuffer.day,
-		      s_ttBuffer.hour, s_ttBuffer.minute};
-	Serial.println("===== 时空旅行 · 编辑 =====");
-	for (int i = 0; i < TT_FIELD_COUNT; i++)
-		Serial.printf("%c %s: %d\n", (i == s_ttFieldCursor) ? '*' : ' ', fields[i], vals[i]);
-	Serial.println("UP/DOWN 加减   A 确认   B 取消");
 }
 
 // ---------- 校准动作 ----------
@@ -509,14 +359,17 @@ InputMode inputManagerMode()
 	return s_mode;
 }
 
-int inputManagerListCursor()
+void inputManagerGetSnapshot(InputSnapshot *out)
 {
-	return s_listCursor;
-}
-
-int inputManagerSelectedTarget()
-{
-	return s_selectedTarget;
+	if (out == NULL)
+		return;
+	out->mode = s_mode;
+	out->calPhase = s_calPhase;
+	out->menuCursor = s_menuCursor;
+	out->listCursor = s_listCursor;
+	out->selectedTarget = s_selectedTarget;
+	out->ttFieldCursor = s_ttFieldCursor;
+	out->ttBuffer = s_ttBuffer;
 }
 
 bool inputManagerConsumeDataDirty()
@@ -531,18 +384,4 @@ bool inputManagerConsumeRender()
 	bool r = s_needRender;
 	s_needRender = false;
 	return r;
-}
-
-void inputManagerRender()
-{
-	switch (s_mode) {
-	case IM_MENU:          renderMenu();         break;
-	case IM_LOCATION:      renderLocation();     break;
-	case IM_CALIBRATE:     renderCalibrate();    break;
-	case IM_OBSERVE_LIVE:  renderObserveLive();  break;
-	case IM_OBSERVE_LIST:  renderObserveList();  break;
-	case IM_OBSERVE_GUIDE: renderGuide();        break;
-	case IM_TT_SELECT:     renderTtSelect();     break;
-	case IM_TT_EDIT:       renderTtEdit();       break;
-	}
 }

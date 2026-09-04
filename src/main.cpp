@@ -1,6 +1,6 @@
 // 当前阶段：第 2 阶段 —— BNO085 硬件接入暂缓，相关活跃代码已全部注释（搜"BNO085 暂缓"恢复）；
 // 第 1 阶段天文引擎+星表+GPS 已就绪；第 5 阶段 InputManager 状态机已接管按键路由。
-// 主程序（胶水层）：setup() 初始化驱动；loop() 按 1-6 顺序执行：串口→GPS→输入状态机→数据页刷新→串口打印→OLED。
+// 主程序（胶水层）：setup() 初始化驱动；loop() 按 1-6 顺序执行：串口→GPS→输入状态机→数据页刷新→统一渲染→OLED。
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
@@ -21,6 +21,7 @@
 #include "TimeTravelManager.h"
 #include "SerialConsole.h"
 #include "InputManager.h"
+#include "RenderManager.h"
 
 // ---------- 运行期状态 ----------
 static astro_observer_t s_observer = {0.0, 0.0, 0.0};
@@ -88,7 +89,7 @@ void loop()
 			      timetravelResolveObserver(s_observer));
 	}
 	if (inputManagerConsumeRender()) {
-		inputManagerRender();
+		renderManagerRender();
 	}
 
 	// 5. 串口 R 命令 / 注入变更：打印完整可见排序（含高度、方位角）

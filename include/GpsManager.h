@@ -4,27 +4,24 @@
 #include <Arduino.h>
 #include "AstronomyEngine.h"
 
-typedef enum {
-    GPS_SRC_NONE,          // 无数据
-    GPS_SRC_GPS,           // 来自实时 GPS
-    GPS_SRC_NVS_FALLBACK,  // 来自 NVS 回退
-    GPS_SRC_PLACEHOLDER    // 占位坐标 (0,0,0)
-} GpsDataSource;
+// 行为层：GPS 管理器（非阻塞状态机）。
+// 上电或触发后进入 SEARCHING，60s 内等待实时定位；成功 → FIXED；
+// 超时且有 NVS 回退 → FALLBACK；超时且无 NVS → NONE（占位 0,0,0）。
+// loop() 每圈调用 gpsManagerTick()，无任何阻塞。
 
 typedef enum {
-    GPS_WAIT_IDLE,         // 未启动
-    GPS_WAIT_IN_PROGRESS,  // 正在尝试定位
-    GPS_WAIT_DONE          // 已完成（成功/超时/回退）
-} GpsWaitState;
+    GPS_STATUS_SEARCHING,   // 正在搜索定位（60s 内）
+    GPS_STATUS_FIXED,       // 实时定位已获取
+    GPS_STATUS_FALLBACK,    // 60s 超时，回退到 NVS 上次位置
+    GPS_STATUS_NONE         // 超时且 NVS 空，无位置信息（占位 0,0,0）
+} GpsStatus;
 
-void         gpsManagerInit();                // 初始化 NVS + GPS 驱动
-void         gpsManagerStartWait();            // 启动定位（非阻塞），记录起始时间戳，设状态 IN_PROGRESS
-bool         gpsManagerCheckFix();            // 每帧调用：gpsTick() + 检查是否定位成功或超时；完成后更新内部数据并设状态 DONE；返回 true 表示完成
-GpsWaitState gpsManagerGetWaitState();        // 返回当前等待状态
-bool         gpsManagerHasFix();             // 是否有有效定位（GPS 或 NVS）
-GpsDataSource gpsManagerDataSource();         // 返回当前数据来源
-const char*  gpsManagerDataSourceTag();       // 数据来源标签字符串
-bool         gpsManagerGetUtc(astro_utc_t *out);
-bool         gpsManagerGetObserver(astro_observer_t *out);
+void         gpsManagerBegin();                     // init NVS + GPS 驱动 → 加载 NVS 到回退缓存 → 进入 SEARCHING
+void         gpsManagerTick();                      // 每 loop 调用一次，非阻塞，状态机实际工作在此
+void         gpsManagerRequestFreshFix();           // 菜单触发：重置回 SEARCHING，立即返回
+GpsStatus    gpsManagerGetStatus();                 // 供 OLED/串口读取当前状态
+const char*  gpsManagerStatusTag();                 // 状态标签："GPS"/"NVS"/"无位置"/"搜索中"
+bool         gpsManagerGetLocation(astro_observer_t *out); // FIXED→实时；FALLBACK/NONE→回退/占位
+bool         gpsManagerGetUtc(astro_utc_t *out);           // 时间（天文引擎需要）
 
 #endif // GPS_MANAGER_H

@@ -2,15 +2,18 @@
 #include "GpsDriver.h"
 #include <Preferences.h>
 
-static const unsigned long GPS_WAIT_TIMEOUT_MS = 60000;
+static const unsigned long GPS_SEARCH_TIMEOUT_MS = 60000;
 
 static Preferences s_prefs;
-static GpsDataSource s_dataSource = GPS_SRC_NONE;
-static GpsWaitState s_waitState = GPS_WAIT_IDLE;
-static unsigned long s_waitStartMs = 0;
+static GpsStatus s_status = GPS_STATUS_SEARCHING;
+static unsigned long s_searchStartMs = 0;
+
+// 回退缓存：NVS 上次定位（无 NVS 时为占位 0,0,0）
 static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_utc = {0, 0, 0, 0, 0, 0.0};
+static bool s_fallbackValid = false;
 
+// 把当前 GPS 数据写入 NVS（仅在 fix 落地瞬间调用，频率极低，无闪存磨损顾虑）。
 static void saveNvsGpsData()
 {
     GpsData d;
@@ -27,6 +30,7 @@ static void saveNvsGpsData()
     s_prefs.putDouble("gps_sec", d.second);
 }
 
+// 从 NVS 加载上次定位到回退缓存，成功返回 true。
 static bool loadNvsGpsData()
 {
     if (!s_prefs.isKey("gps_yr")) return false;
@@ -50,25 +54,25 @@ static bool loadNvsGpsData()
     return true;
 }
 
-void gpsManagerInit()
+void gpsManagerBegin()
 {
     s_prefs.begin("gps_data", false);
     gpsInit();
+
+    s_fallbackValid = loadNvsGpsData();
+
+    s_status = GPS_STATUS_SEARCHING;
+    s_searchStartMs = millis();
 }
 
-void gpsManagerStartWait()
+void gpsManagerTick()
 {
-    s_waitStartMs = millis();
-    s_waitState   = GPS_WAIT_IN_PROGRESS;
-    s_dataSource  = GPS_SRC_NONE;
-}
+    if (s_status != GPS_STATUS_SEARCHING) return;
 
-bool gpsManagerCheckFix()
-{
-    if (s_waitState != GPS_WAIT_IN_PROGRESS) return true;
-
+    // 1. 拉取并解析新到达的 NMEA 字节（非阻塞，只读当前 UART 缓冲）
     gpsTick();
 
+    // 2. 有效定位出现 → FIXED，写 NVS 一次
     if (gpsHasFix()) {
         GpsData d;
         if (gpsGetData(&d) && d.lat != 0.0 && d.lon != 0.0) {
@@ -81,69 +85,61 @@ bool gpsManagerCheckFix()
             s_utc.hour   = d.hour;
             s_utc.minute = d.minute;
             s_utc.second = d.second;
-            s_dataSource = GPS_SRC_GPS;
+            s_fallbackValid = true;
             saveNvsGpsData();
+            s_status = GPS_STATUS_FIXED;
             Serial.printf("[GPS] 定位成功: lat=%.4f lon=%.4f h=%.1fm\n",
                           s_observer.latitude, s_observer.longitude, s_observer.height);
-            s_waitState = GPS_WAIT_DONE;
-            return true;
+            return;
         }
     }
 
-    if (millis() - s_waitStartMs >= GPS_WAIT_TIMEOUT_MS) {
-        Serial.println("[GPS] GPS 定位超时，尝试加载 NVS...");
-        if (loadNvsGpsData()) {
-            s_dataSource = GPS_SRC_NVS_FALLBACK;
-            Serial.printf("[NVS] 加载上次定位: lat=%.4f lon=%.4f\n",
+    // 3. 超时 → FALLBACK（有 NVS）或 NONE（无 NVS）
+    if (millis() - s_searchStartMs >= GPS_SEARCH_TIMEOUT_MS) {
+        if (s_fallbackValid) {
+            s_status = GPS_STATUS_FALLBACK;
+            Serial.printf("[NVS] 定位超时，使用上次位置: lat=%.4f lon=%.4f\n",
                           s_observer.latitude, s_observer.longitude);
         } else {
-            s_dataSource = GPS_SRC_PLACEHOLDER;
-            Serial.println("[GPS] 无 NVS 数据，使用占位坐标 (0,0,0)");
+            s_status = GPS_STATUS_NONE;
+            Serial.println("[GPS] 定位超时且无 NVS 数据，无位置信息");
         }
-        s_waitState = GPS_WAIT_DONE;
-        return true;
     }
-
-    return false;
 }
 
-GpsWaitState gpsManagerGetWaitState()
+void gpsManagerRequestFreshFix()
 {
-    return s_waitState;
+    s_status = GPS_STATUS_SEARCHING;
+    s_searchStartMs = millis();
 }
 
-bool gpsManagerHasFix()
+GpsStatus gpsManagerGetStatus()
 {
-    return s_dataSource == GPS_SRC_GPS || s_dataSource == GPS_SRC_NVS_FALLBACK;
+    return s_status;
 }
 
-GpsDataSource gpsManagerDataSource()
+const char* gpsManagerStatusTag()
 {
-    return s_dataSource;
-}
-
-const char* gpsManagerDataSourceTag()
-{
-    switch (s_dataSource) {
-        case GPS_SRC_GPS:          return "GPS";
-        case GPS_SRC_NVS_FALLBACK: return "NVS";
-        case GPS_SRC_PLACEHOLDER:   return "无位置";
-        default:                    return "无数据";
+    switch (s_status) {
+        case GPS_STATUS_FIXED:     return "GPS";
+        case GPS_STATUS_FALLBACK:  return "NVS";
+        case GPS_STATUS_NONE:      return "无位置";
+        default:                   return "搜索中";
     }
+}
+
+bool gpsManagerGetLocation(astro_observer_t *out)
+{
+    if (out == NULL) return false;
+    if (s_status == GPS_STATUS_SEARCHING) return false;
+    *out = s_observer;
+    return true;
 }
 
 bool gpsManagerGetUtc(astro_utc_t *out)
 {
     if (out == NULL) return false;
-    if (s_dataSource == GPS_SRC_NONE) return false;
+    if (s_status == GPS_STATUS_SEARCHING) return false;
     *out = s_utc;
-    return true;
-}
-
-bool gpsManagerGetObserver(astro_observer_t *out)
-{
-    if (out == NULL) return false;
-    if (s_dataSource == GPS_SRC_NONE) return false;
-    *out = s_observer;
     return true;
 }

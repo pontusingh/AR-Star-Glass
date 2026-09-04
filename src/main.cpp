@@ -92,6 +92,21 @@ void loop()
 		renderManagerRender();
 	}
 
+	// 4b. 观星/转向 模式：~1Hz 刷新 ranker（星体位置随时刻缓变）+ 每帧刷新 OLED 图形
+	InputMode im = inputManagerMode();
+	if (im == IM_OBSERVE_LIVE || im == IM_OBSERVE_GUIDE) {
+		static unsigned long lastRankerMs = 0;
+		if (millis() - lastRankerMs >= 1000) {
+			lastRankerMs = millis();
+			astro_time_t baseTime = astroMakeTime(s_nowUtc.year, s_nowUtc.month,
+							      s_nowUtc.day, s_nowUtc.hour,
+							      s_nowUtc.minute, s_nowUtc.second);
+			rankerUpdate(timetravelResolve(baseTime),
+				      timetravelResolveObserver(s_observer));
+		}
+	}
+	renderManagerRenderOled();
+
 	// 5. 串口 R 命令 / 注入变更：打印完整可见排序（含高度、方位角）
 	if (s_forceRefresh) {
 		s_forceRefresh = false;

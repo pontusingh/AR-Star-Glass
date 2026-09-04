@@ -38,6 +38,19 @@ void oledShowText(const String &text) {
 }
 
 /**
+ * @brief 整屏替换显示：清掉滚动历史，按 n 行直接绘制（最多 4 行）。
+ *        供 RenderManager 渲染页面（菜单/列表等固定布局）使用。
+ */
+void oledShowScreen(const String lines[], int n) {
+	if (n > MAX_TEXT_LINES) n = MAX_TEXT_LINES;
+	lineCount = 0;
+	for (int i = 0; i < n; i++) {
+		screenLines[lineCount++] = lines[i];
+	}
+	oledDirty = true;
+}
+
+/**
  * @brief loop 中每圈调用：有新文本时推入滚动缓冲区并整屏刷新。
  */
 void oledTick() {

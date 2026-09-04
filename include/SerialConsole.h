@@ -2,9 +2,9 @@
 #define SERIAL_CONSOLE_H
 
 // 行为层：串口终端（CLI）。
-// 从 Serial 读取字符，累积成行后解析并执行命令（H/P/T/TT/O/I/A/R）。
+// 从 Serial 读取字符，累积成行后解析并执行命令（H/P/T/TT/O/I/R）。
 // 命令可能修改 nowUtc（T 命令设置 UTC）和 forceRefresh（触发重算与打印）。
-// 打印可见目标表：serialReportTargets()（含高度角/方位角，仅按 A/R 或注入变更触发，不自动连续打印）。
+// 打印可见目标表：serialReportTargets()（含高度角/方位角，仅按 R 或注入变更触发，不自动连续打印）。
 // 首次调用 serialConsoleInit() 时打印帮助信息。
 
 #include <Arduino.h>

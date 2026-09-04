@@ -95,7 +95,7 @@ static void printHelp()
 	Serial.println("  TT <年 月 日 时 分 秒>             时空旅行覆盖；TT OFF 取消");
 	Serial.println("  O <yaw> <pitch> <roll>             注入朝向；O OFF 取消");
 	Serial.println("  I                                  打印当前朝向");
-	Serial.println("  A / R                              打印一次可见 Top10（含高度/方位角）");
+	Serial.println("  R                                  打印一次可见 Top10（含高度/方位角）");
 }
 
 static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
@@ -207,7 +207,6 @@ static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
 		}
 		break;
 	}
-	case 'A':
 	case 'R':
 		forceRefresh = true;
 		break;

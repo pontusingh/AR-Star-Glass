@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // 驱动层：BNO085 IMU（Adafruit BNO08x 库，SH-2 协议），纯硬件封装。
-// 只负责初始化、取数、四元数转欧拉角；校准偏移在行为层 CalibrationManager。
+// 只负责初始化、取数、四元数转欧拉角；校准（单点验证）在行为层 CalibrationManager。
 //
 // 引脚（ESP32-S3，走第二 I2C 外设 Wire1，与 OLED 的 Wire(GPIO8/9) 互不干扰）：
 //   SDA=GPIO1, SCL=GPIO2, INT=GPIO10, RST=GPIO11

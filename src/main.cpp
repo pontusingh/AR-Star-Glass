@@ -1,6 +1,6 @@
-// 当前阶段：第 2 阶段 —— BNO085 硬件接入暂缓，相关活跃代码已全部注释（搜"BNO085 暂缓"恢复）；
-// 第 1 阶段天文引擎+星表+GPS 已就绪；第 5 阶段 InputManager 状态机已接管按键路由。
-// 主程序（胶水层）：setup() 初始化驱动；loop() 按 1-6 顺序执行：串口→GPS→输入状态机→数据页刷新→统一渲染→OLED。
+// 当前阶段：第 1/2/3/5 阶段 —— 天文引擎+星表+GPS 就绪；BNO085 IMU 已接入；
+// InputManager 状态机接管按键路由；RenderManager 统一渲染（串口+OLED，含 FOV 叠加）。
+// 主程序（胶水层）：setup() 初始化驱动；loop() 按 1-6 顺序执行：串口→GPS/IMU→输入状态机→数据页刷新→统一渲染→OLED。
 //
 // 串口命令（115200，行尾换行）：
 //   H                          帮助
@@ -15,6 +15,7 @@
 #include "ButtonDriver.h"
 #include "DisplayDriver.h"
 #include "ImuDriver.h"
+#include "OrientationManager.h"
 #include "AstronomyEngine.h"
 #include "StarCatalog.h"
 #include "VisibilityRanker.h"
@@ -35,13 +36,14 @@ void setup()
 	Serial.begin(115200);
 	delay(300);
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
-	Serial.println("阶段: 第2阶段 (BNO085 硬件接入暂缓，IMU 代码已注释)");
+	Serial.println("阶段: BNO085 IMU 已接入");
 
 	// 1. 初始化各驱动
 	buttonInit();
 	oledInit();
 	gpsManagerBegin();      // init NVS+GPS → 进入 SEARCHING（非阻塞）
-	// imuInit(); // 【BNO085 暂缓】
+	imuInit();              // BNO085（Wire1）；失败时自动回退串口 O 注入
+	orientationInit();      // 从 NVS 加载校准残差（单点验证修正量）
 
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
 		      BODY_CATALOG_COUNT);
@@ -72,7 +74,7 @@ void loop()
 		}
 	}
 
-	// imuTick(); // 【BNO085 暂缓】
+	imuTick();              // BNO085 取数（INT 门控，50Hz）
 
 	// 3. 输入状态机：同步基准时间 + 路由按键（含 3s 超时）
 	inputManagerSetBaseTime(s_nowUtc);

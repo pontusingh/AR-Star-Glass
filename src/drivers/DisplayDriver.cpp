@@ -51,6 +51,40 @@ void oledShowScreen(const String lines[], int n) {
 }
 
 /**
+ * @brief 开始一帧图形绘制：清空显示缓冲。
+ */
+void oledStartFrame() {
+	u8g2.clearBuffer();
+}
+
+/**
+ * @brief 结束一帧：把缓冲推到 OLED。
+ */
+void oledEndFrame() {
+	u8g2.sendBuffer();
+}
+
+void oledDrawStr(int x, int y, const char *s) {
+	u8g2.drawStr(x, y, s);
+}
+
+void oledDrawCircle(int x, int y, int r) {
+	u8g2.drawCircle(x, y, r);
+}
+
+void oledDrawDisc(int x, int y, int r) {
+	u8g2.drawDisc(x, y, r);
+}
+
+void oledDrawLine(int x0, int y0, int x1, int y1) {
+	u8g2.drawLine(x0, y0, x1, y1);
+}
+
+void oledDrawTriangle(int x0, int y0, int x1, int y1, int x2, int y2) {
+	u8g2.drawTriangle(x0, y0, x1, y1, x2, y2);
+}
+
+/**
  * @brief loop 中每圈调用：有新文本时推入滚动缓冲区并整屏刷新。
  */
 void oledTick() {

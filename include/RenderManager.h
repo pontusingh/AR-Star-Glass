@@ -10,6 +10,7 @@
 // 串口与 OLED 共用同一套「页面内容」逻辑（条目、光标、窗口计算），
 // 仅最终排版不同；OLED 的精简规则集中在各 oled*() 函数，后续可独立调整。
 
-void renderManagerRender();
+void renderManagerRender();      // 状态变化事件：串口 + OLED 全量渲染
+void renderManagerRenderOled();  // 每帧 OLED（直接观星/转向指导实时刷新，内部节流）
 
 #endif // RENDER_MANAGER_H

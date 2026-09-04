@@ -19,6 +19,17 @@ const int CAL_TOP_N = 5;
 const int TT_FIELD_COUNT = 5;
 const int TT_CONFIRM_INDEX = TT_FIELD_COUNT;
 
+// FOV（单目，plan.md 15–30° 取下限）；屏幕 128×64 → 均匀 8 px/°
+const double FOV_H_DEG = 16.0;
+const double FOV_V_DEG = 8.0;
+const double FOV_HALF_H = FOV_H_DEG / 2.0;
+const double FOV_HALF_V = FOV_V_DEG / 2.0;
+const double PX_PER_DEG = 8.0;
+const int SCREEN_W = 128;
+const int SCREEN_H = 64;
+const int SCREEN_CX = 64;
+const int SCREEN_CY = 32;
+
 // ---------- 共享工具 ----------
 String targetName(const RankedTarget *t)
 {
@@ -32,6 +43,16 @@ double wrapDeg(double deg)
 	while (deg > 180.0) deg -= 360.0;
 	while (deg < -180.0) deg += 360.0;
 	return deg;
+}
+
+// FOV 过滤：返回目标是否在视场内，并输出 Δaz / Δalt（度）
+bool targetInFov(const RankedTarget *t, double yaw, double pitch, double *daz, double *dalt)
+{
+	double a = wrapDeg(t->azimuth - yaw);
+	double e = t->altitude - pitch;
+	if (daz) *daz = a;
+	if (dalt) *dalt = e;
+	return fabs(a) <= FOV_HALF_H && fabs(e) <= FOV_HALF_V;
 }
 
 // 4 行窗口起始下标（光标尽量居中偏上）
@@ -115,7 +136,24 @@ void serialObserveLive(const InputSnapshot &s)
 {
 	(void)s;
 	Serial.println("===== 观星 · 直接观星 =====");
-	Serial.println("（FOV 内星名渲染待阶段3 RenderManager）");
+	ImuOrientation o;
+	if (!orientationGet(&o)) {
+		Serial.println("（无朝向数据，请先 O 注入朝向或连接 IMU）");
+	} else {
+		Serial.printf("朝向: yaw=%+.1f pitch=%+.1f\n", o.yaw, o.pitch);
+		int shown = 0;
+		for (int i = 0; i < rankerCount(); i++) {
+			const RankedTarget *t = rankerAt(i);
+			double daz, dalt;
+			if (targetInFov(t, o.yaw, o.pitch, &daz, &dalt)) {
+				Serial.printf("  %s  方位%+.1f 高度%+.1f (Δaz%+.1f Δalt%+.1f)\n",
+					      targetName(t).c_str(), t->azimuth, t->altitude, daz, dalt);
+				shown++;
+			}
+		}
+		if (shown == 0)
+			Serial.println("  （视场内无可显示目标）");
+	}
 	Serial.println("A 推荐名录   B 返回");
 }
 
@@ -251,10 +289,36 @@ void oledCalibrate(const InputSnapshot &s)
 void oledObserveLive(const InputSnapshot &s)
 {
 	(void)s;
-	String lines[2];
-	lines[0] = "直接观星";
-	lines[1] = "(FOV 待阶段3)";
-	oledShowScreen(lines, 2);
+	oledStartFrame();
+
+	ImuOrientation o;
+	if (!orientationGet(&o)) {
+		oledDrawStr(0, 16, "无朝向数据");
+		oledDrawStr(0, 32, "请注入朝向(O)或接IMU");
+		oledEndFrame();
+		return;
+	}
+
+	// 中心十字（视线方向）
+	oledDrawLine(SCREEN_CX - 5, SCREEN_CY, SCREEN_CX + 5, SCREEN_CY);
+	oledDrawLine(SCREEN_CX, SCREEN_CY - 5, SCREEN_CX, SCREEN_CY + 5);
+
+	for (int i = 0; i < rankerCount(); i++) {
+		const RankedTarget *t = rankerAt(i);
+		double daz, dalt;
+		if (!targetInFov(t, o.yaw, o.pitch, &daz, &dalt))
+			continue;
+		int x = SCREEN_CX + (int)lround(daz * PX_PER_DEG);
+		int y = SCREEN_CY - (int)lround(dalt * PX_PER_DEG);
+		if (x < 0) x = 0;
+		if (x > SCREEN_W - 1) x = SCREEN_W - 1;
+		if (y < 0) y = 0;
+		if (y > SCREEN_H - 1) y = SCREEN_H - 1;
+		oledDrawDisc(x, y, 1);                       // 位置标记点
+		oledDrawStr(x + 3, y, targetName(t).c_str()); // 星名
+	}
+
+	oledEndFrame();
 }
 
 void oledObserveList(const InputSnapshot &s)
@@ -275,27 +339,65 @@ void oledObserveList(const InputSnapshot &s)
 
 void oledGuide(const InputSnapshot &s)
 {
-	String lines[4];
-	int n = 0;
-	char buf[32];
+	oledStartFrame();
 
 	const RankedTarget *t = rankerAt(s.selectedTarget);
 	if (t == NULL) {
-		lines[n++] = "（无选中目标）";
-	} else {
-		lines[n++] = String("目标: ") + targetName(t);
-		snprintf(buf, sizeof(buf), "方位%.0f 高度%.0f", t->azimuth, t->altitude);
-		lines[n++] = String(buf);
-		ImuOrientation o;
-		if (orientationGet(&o)) {
-			double daz = wrapDeg(t->azimuth - o.yaw);
-			snprintf(buf, sizeof(buf), "%s %.0f度", daz >= 0 ? "向右" : "向左", fabs(daz));
-			lines[n++] = String(buf);
-		} else {
-			lines[n++] = "(无朝向数据)";
-		}
+		oledDrawStr(0, SCREEN_CY, "（无选中目标）");
+		oledEndFrame();
+		return;
 	}
-	oledShowScreen(lines, n);
+
+	// 顶部目标名
+	oledDrawStr(0, 10, targetName(t).c_str());
+
+	// 中心瞄准圆圈（reticle）
+	oledDrawCircle(SCREEN_CX, SCREEN_CY, 18);
+
+	ImuOrientation o;
+	if (!orientationGet(&o)) {
+		oledDrawStr(0, SCREEN_H - 12, "无朝向数据");
+		oledEndFrame();
+		return;
+	}
+
+	double daz, dalt;
+	bool inFov = targetInFov(t, o.yaw, o.pitch, &daz, &dalt);
+
+	// 目标屏幕偏移（x 右正，y 下正）
+	double sx = daz * PX_PER_DEG;
+	double sy = -dalt * PX_PER_DEG;
+	double len = sqrt(sx * sx + sy * sy);
+
+	// 箭头：从中心指向目标方向，长度固定 16px
+	double ux = 0.0, uy = 0.0;
+	int ax = SCREEN_CX, ay = SCREEN_CY;
+	if (len > 0.5) {
+		ux = sx / len;
+		uy = sy / len;
+		ax = SCREEN_CX + (int)lround(ux * 16.0);
+		ay = SCREEN_CY + (int)lround(uy * 16.0);
+	}
+	oledDrawLine(SCREEN_CX, SCREEN_CY, ax, ay);
+
+	if (len > 0.5) {
+		// 箭头三角头：顶点=尖端，底边垂直方向
+		double px = -uy, py = ux;
+		int bx1 = (int)lround(ax - ux * 6 + px * 4);
+		int by1 = (int)lround(ay - uy * 6 + py * 4);
+		int bx2 = (int)lround(ax - ux * 6 - px * 4);
+		int by2 = (int)lround(ay - uy * 6 - py * 4);
+		oledDrawTriangle(ax, ay, bx1, by1, bx2, by2);
+	}
+
+	// 目标进入 FOV → 画实心点标记
+	if (inFov) {
+		int tx = SCREEN_CX + (int)lround(sx);
+		int ty = SCREEN_CY + (int)lround(sy);
+		oledDrawDisc(tx, ty, 2);
+	}
+
+	oledEndFrame();
 }
 
 void oledTtSelect(const InputSnapshot &s)
@@ -352,4 +454,24 @@ void renderManagerRender()
 	case IM_TT_SELECT:     serialTtSelect(s);      oledTtSelect(s);     break;
 	case IM_TT_EDIT:       serialTtEdit(s);        oledTtEdit(s);       break;
 	}
+}
+
+// 每帧 OLED 刷新（仅直接观星/转向指导），内部 50ms 节流，避免串口/重绘开销。
+void renderManagerRenderOled()
+{
+	InputSnapshot s;
+	inputManagerGetSnapshot(&s);
+	if (s.mode != IM_OBSERVE_LIVE && s.mode != IM_OBSERVE_GUIDE)
+		return;
+
+	static unsigned long lastMs = 0;
+	unsigned long now = millis();
+	if (now - lastMs < 50)
+		return;
+	lastMs = now;
+
+	if (s.mode == IM_OBSERVE_LIVE)
+		oledObserveLive(s);
+	else
+		oledGuide(s);
 }

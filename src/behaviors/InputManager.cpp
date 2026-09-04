@@ -67,6 +67,7 @@ void enterObserveLive()
 {
 	s_mode = IM_OBSERVE_LIVE;
 	s_selectedTarget = -1;
+	markDataDirty(); // FOV 叠加需要 fresh ranker
 	markRender();
 }
 

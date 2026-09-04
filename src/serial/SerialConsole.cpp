@@ -202,6 +202,9 @@ static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
 			Serial.printf("朝向: yaw=%+.1f pitch=%+.1f roll=%+.1f 精度=%u [%s]\n",
 				      o.yaw, o.pitch, o.roll, o.accuracy,
 				      orientationHasOverride() ? "注入" : "IMU");
+			if (!orientationHasOverride())
+				Serial.printf("IMU 链路: 帧 %lu, 复位 %u（应约 50 帧/秒）\n",
+					      (unsigned long)imuGetFrameCount(), imuGetResetCount());
 		} else {
 			Serial.println("朝向: 无数据（IMU 未接，请用 O <yaw> <pitch> <roll> 注入）");
 		}

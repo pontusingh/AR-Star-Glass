@@ -30,11 +30,12 @@ bool calibrationVerify(int targetIdx, double *azResidual, double *altResidual)
 		return false;
 
 	ImuOrientation o;
-	if (!orientationGet(&o))
+	// 用「原始」朝向计算残差，避免把已应用的修正再算进去（否则重复校准会抹掉修正）。
+	if (!orientationGetRaw(&o))
 		return false;
 
-	// 磁北基准的 yaw 与真北基准的方位角差当地磁偏角，单点验证暂不修正，
-	// 残差本身即用来观察该偏差；pitch 与高度角直接对应。
+	// 磁北基准的 yaw 与真北基准的方位角差当地磁偏角 + 安装误差，残差即修正量；
+	// pitch 与高度角直接对应。
 	double azRes = wrapDeg(o.yaw - t->azimuth);
 	double altRes = o.pitch - t->altitude;
 
@@ -44,6 +45,9 @@ bool calibrationVerify(int targetIdx, double *azResidual, double *altResidual)
 	}
 	s_prefs.putDouble("az_res", azRes);
 	s_prefs.putDouble("alt_res", altRes);
+
+	// 立即生效：更新 OrientationManager 缓存的修正量
+	orientationSetCalibrationOffset(azRes, altRes);
 
 	if (azResidual)
 		*azResidual = azRes;

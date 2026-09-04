@@ -232,7 +232,8 @@ void renderTtEdit()
 	int vals[] = {s_ttBuffer.year, s_ttBuffer.month, s_ttBuffer.day,
 		      s_ttBuffer.hour, s_ttBuffer.minute};
 	Serial.println("===== 时空旅行 · 编辑 =====");
-	Serial.printf("字段: %s（当前 %d）\n", fields[s_ttFieldCursor], vals[s_ttFieldCursor]);
+	for (int i = 0; i < TT_FIELD_COUNT; i++)
+		Serial.printf("%c %s: %d\n", (i == s_ttFieldCursor) ? '*' : ' ', fields[i], vals[i]);
 	Serial.println("UP/DOWN 加减   A 确认   B 取消");
 }
 

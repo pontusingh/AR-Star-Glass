@@ -54,7 +54,7 @@ void oledEndFrame() {
 }
 
 void oledDrawStr(int x, int y, const char *s) {
-	u8g2.drawStr(x, y, s);
+	u8g2.drawUTF8(x, y, s);
 }
 
 void oledDrawCircle(int x, int y, int r) {

@@ -31,18 +31,18 @@ const int SCREEN_CX = 64;
 const int SCREEN_CY = 32;
 
 // ---------- 共享工具 ----------
-String targetName(const RankedTarget *t)
+const char *targetName(const RankedTarget *t)
 {
 	if (t->kind == TARGET_STAR)
-		return String(STAR_CATALOG[t->catalogIndex].nameAscii);
-	return String(BODY_CATALOG[t->catalogIndex].nameAscii);
+		return STAR_CATALOG[t->catalogIndex].nameAscii;
+	return BODY_CATALOG[t->catalogIndex].nameAscii;
 }
 
-String targetNameCn(const RankedTarget *t)
+const char *targetNameCn(const RankedTarget *t)
 {
 	if (t->kind == TARGET_STAR)
-		return String(STAR_CATALOG[t->catalogIndex].nameCn);
-	return String(BODY_CATALOG[t->catalogIndex].nameCn);
+		return STAR_CATALOG[t->catalogIndex].nameCn;
+	return BODY_CATALOG[t->catalogIndex].nameCn;
 }
 
 double wrapDeg(double deg)
@@ -154,7 +154,7 @@ void serialObserveLive(const InputSnapshot &s)
 			double daz, dalt;
 			if (targetInFov(t, o.yaw, o.pitch, &daz, &dalt)) {
 				Serial.printf("  %s  方位%+.1f 高度%+.1f (Δaz%+.1f Δalt%+.1f)\n",
-					      targetName(t).c_str(), t->azimuth, t->altitude, daz, dalt);
+					      targetName(t), t->azimuth, t->altitude, daz, dalt);
 				shown++;
 			}
 		}
@@ -322,7 +322,7 @@ void oledObserveLive(const InputSnapshot &s)
 		if (y < 0) y = 0;
 		if (y > SCREEN_H - 1) y = SCREEN_H - 1;
 		oledDrawDisc(x, y, 1);                       // 位置标记点
-		oledDrawStr(x + 3, y, targetNameCn(t).c_str()); // 星名
+		oledDrawStr(x + 3, y, targetNameCn(t)); // 星名
 	}
 
 	oledEndFrame();
@@ -356,7 +356,7 @@ void oledGuide(const InputSnapshot &s)
 	}
 
 	// 顶部目标名
-	oledDrawStr(0, 10, targetNameCn(t).c_str());
+	oledDrawStr(0, 10, targetNameCn(t));
 
 	// 中心瞄准圆圈（reticle）
 	oledDrawCircle(SCREEN_CX, SCREEN_CY, 18);

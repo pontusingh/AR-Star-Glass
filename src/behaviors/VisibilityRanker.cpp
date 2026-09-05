@@ -79,9 +79,12 @@ void rankerUpdate(astro_time_t time, astro_observer_t observer)
 			continue;
 		if (altAz.altitude <= s_horizonMinDeg)
 			continue;
+		astro_illum_t ill = Astronomy_Illumination(entry.body, time);
+		if (ill.status != ASTRO_SUCCESS)
+			continue;
 		s_targets[s_count].kind = TARGET_BODY;
 		s_targets[s_count].catalogIndex = i;
-		s_targets[s_count].magnitude = Astronomy_Illumination(entry.body, time).mag;
+		s_targets[s_count].magnitude = ill.mag;
 		s_targets[s_count].altitude = altAz.altitude;
 		s_targets[s_count].azimuth = altAz.azimuth;
 		s_count++;

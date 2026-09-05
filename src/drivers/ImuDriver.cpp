@@ -6,6 +6,9 @@
 
 #include "ImuDriver.h"
 
+// 调试开关：1 = 每 1s 在串口打印朝向/帧数/复位数；稳定后改 0 关闭
+#define IMU_DEBUG 1
+
 static Adafruit_BNO08x s_bno(PIN_IMU_RST); // RST 脚交给库做上电硬复位
 static ImuOrientation s_latest;            // 最新一帧朝向
 static bool s_hasData = false;             // 是否收到过有效数据
@@ -14,6 +17,14 @@ static uint32_t s_frameCount = 0;          // 累计收到旋转矢量帧数（�
 static uint16_t s_resetCount = 0;          // 传感器意外复位次数
 
 static const uint32_t REPORT_INTERVAL_US = 20000; // 旋转矢量报告间隔：50Hz
+static const uint32_t IMU_STALL_TIMEOUT_MS = 2000; // 数据停摆阈值：2s 无新帧触发重使能
+static const uint32_t REENABLE_RETRY_INTERVAL_MS = 100; // 重使能重试间隔（非阻塞）
+static const uint16_t REENABLE_RETRY_MAX = 50;          // 重使能重试上限（约 5s）
+
+// 非阻塞重使能状态（复位/停摆后不 delay、不重置 s_hasData，静默沿用旧朝向）
+static bool s_pendingReenable = false;
+static uint16_t s_reenableAttempts = 0;
+static unsigned long s_reenableLastTryMs = 0;
 
 bool imuInit()
 {
@@ -75,24 +86,68 @@ static void quatToEuler(float qr, float qi, float qj, float qk,
 	*roll *= RAD_TO_DEG;
 }
 
+// 请求非阻塞重使能：复位/停摆后置位，由 imuTick 里限流重试 enableReport。
+static void requestReenable()
+{
+	if (!s_pendingReenable)
+		s_resetCount++;
+	s_pendingReenable = true;
+	s_reenableAttempts = 0;
+	s_reenableLastTryMs = 0;
+}
+
 void imuTick()
 {
 	if (!s_ready)
 		return;
 
+#if IMU_DEBUG
+	// 1Hz 调试打印：观察朝向是否持续更新、帧数是否递增、复位是否发生
+	{
+		static unsigned long lastDbgMs = 0;
+		if (millis() - lastDbgMs >= 1000) {
+			lastDbgMs = millis();
+			if (s_hasData)
+				Serial.printf("[IMU] yaw=%+7.1f pitch=%+6.1f roll=%+6.1f acc=%u 帧=%lu 复位=%u\n",
+					      s_latest.yaw, s_latest.pitch, s_latest.roll, s_latest.accuracy,
+					      (unsigned long)s_frameCount, s_resetCount);
+			else
+				Serial.printf("[IMU] 无数据 帧=%lu 复位=%u\n",
+					      (unsigned long)s_frameCount, s_resetCount);
+		}
+	}
+#endif
+
 	// 意外复位自愈：电源瞬断/干扰会让传感器复位且报告使能丢失。
-	// 复位完成通告会拉低 INT，下面的门控不会挡住它；一旦读到，这里重新使能。
 	if (s_bno.wasReset()) {
-		s_resetCount++;
-		s_bno.enableReport(SH2_ROTATION_VECTOR, REPORT_INTERVAL_US);
-		Serial.printf("[IMU] 传感器意外复位，已重新使能旋转矢量报告（第 %u 次）\n",
-			      s_resetCount);
+		Serial.printf("[IMU] 传感器意外复位（第 %u 次）\n", s_resetCount + 1);
+		requestReenable();
+	}
+
+	// 数据停摆看门狗：曾收到数据、如今 2s 无新帧 → 漏检的复位/卡死，主动请求重使能。
+	if (s_hasData && (millis() - s_latest.lastUpdateMs) > IMU_STALL_TIMEOUT_MS) {
+		Serial.printf("[IMU] 数据停摆，请求重使能（第 %u 次）\n", s_resetCount + 1);
+		requestReenable();
 	}
 
 	// INT 门控：仅在有数据待发（INT 低）时读取。
 	// Adafruit 库的 I2C 路径盲读不看 INT，ESP32 上盲读空事务会触发
 	// 时钟延展→主机中止→传感器发送队列卡死，必须自己挡（见 imuInit 注释）。
-	if (digitalRead(PIN_IMU_INT) != LOW) {
+	// 这一读同时驱动 sh2_service 处理复位包/重新 advert，从而重建 control 通道。
+	if (digitalRead(PIN_IMU_INT) == LOW) {
+		sh2_SensorValue_t v;
+		while (s_bno.getSensorEvent(&v)) { // 一圈可能积多条事件，全部取走
+			if (v.sensorId == SH2_ROTATION_VECTOR) {
+				quatToEuler(v.un.rotationVector.real, v.un.rotationVector.i,
+					    v.un.rotationVector.j, v.un.rotationVector.k,
+					    &s_latest.yaw, &s_latest.pitch, &s_latest.roll);
+				s_latest.accuracy = v.status & 0x03; // 低 2 位为精度
+				s_latest.lastUpdateMs = millis();
+				s_hasData = true;
+				s_frameCount++;
+			}
+		}
+	} else {
 		// 就绪 1s 后 INT 从未拉低且无数据：一次性告警，帮助排查 INT 接线
 		static unsigned long readyMs = 0;
 		static bool warned = false;
@@ -102,19 +157,20 @@ void imuTick()
 			warned = true;
 			Serial.println("[IMU] 警告：INT 一直为高且无数据，检查 INT 接线 (GPIO10)");
 		}
-		return;
 	}
 
-	sh2_SensorValue_t v;
-	while (s_bno.getSensorEvent(&v)) { // 一圈可能积多条事件，全部取走
-		if (v.sensorId == SH2_ROTATION_VECTOR) {
-			quatToEuler(v.un.rotationVector.real, v.un.rotationVector.i,
-				    v.un.rotationVector.j, v.un.rotationVector.k,
-				    &s_latest.yaw, &s_latest.pitch, &s_latest.roll);
-			s_latest.accuracy = v.status & 0x03; // 低 2 位为精度
-			s_latest.lastUpdateMs = millis();
-			s_hasData = true;
-			s_frameCount++;
+	// 非阻塞重使能重试：放在读取之后，control 通道已尽量重建；限流 + 上限，零 delay。
+	if (s_pendingReenable) {
+		unsigned long now = millis();
+		if (now - s_reenableLastTryMs >= REENABLE_RETRY_INTERVAL_MS) {
+			s_reenableLastTryMs = now;
+			if (s_bno.enableReport(SH2_ROTATION_VECTOR, REPORT_INTERVAL_US)) {
+				s_pendingReenable = false;
+				Serial.println("[IMU] 旋转矢量报告已重新使能");
+			} else if (++s_reenableAttempts >= REENABLE_RETRY_MAX) {
+				s_pendingReenable = false;
+				Serial.println("[IMU] 重使能失败（已达重试上限）");
+			}
 		}
 	}
 }

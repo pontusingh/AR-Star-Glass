@@ -21,8 +21,8 @@ int       s_menuCursor = 0;
 int       s_listCursor = 0;
 int       s_selectedTarget = -1;
 int       s_ttFieldCursor = 0;
-astro_utc_t s_ttBuffer = {2000, 1, 1, 0, 0, 0.0};
-astro_utc_t s_baseTime = {2000, 1, 1, 0, 0, 0.0};
+astro_utc_t s_ttBuffer = {2026, 9, 1, 0, 0, 0.0};
+astro_utc_t s_baseTime = {2026, 9, 1, 0, 0, 0.0};
 unsigned long s_doneMs = 0;
 
 bool s_dataDirty = false;
@@ -327,6 +327,8 @@ void inputManagerInit()
 
 void inputManagerSetBaseTime(astro_utc_t utc)
 {
+	if (utc.year == 0)
+		return; // 无有效时间（GPS 未定位）→ 保留 2026-09-01 默认值
 	s_baseTime = utc;
 }
 

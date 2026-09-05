@@ -10,7 +10,6 @@ static const uint8_t BTN_PINS[] = { PIN_BTN_A, PIN_BTN_B, PIN_BTN_UP, PIN_BTN_DO
 static const int     BTN_COUNT  = sizeof(BTN_PINS) / sizeof(BTN_PINS[0]);
 
 // 消抖状态数组（按 ButtonId 索引）
-static volatile bool           s_flags[BTN_COUNT];
 static volatile unsigned long  s_lastPress[BTN_COUNT];
 static volatile ButtonId       s_lastButton = BTN_NONE;
 
@@ -20,7 +19,6 @@ void ARDUINO_ISR_ATTR onAnyButton() {
     for (int i = 0; i < BTN_COUNT; i++) {
         if (digitalRead(BTN_PINS[i]) == LOW
             && (now - s_lastPress[i]) > DEBOUNCE_MS) {
-            s_flags[i] = true;
             s_lastPress[i] = now;
             s_lastButton = (ButtonId)i;
         }
@@ -36,20 +34,10 @@ void buttonInit() {
     }
 }
 
-bool buttonAnyPressed() {
-    for (int i = 0; i < BTN_COUNT; i++) {
-        if (s_flags[i]) return true;
-    }
-    return false;
-}
-
 ButtonId buttonRead() {
     return s_lastButton;
 }
 
 void buttonClear() {
-    for (int i = 0; i < BTN_COUNT; i++) {
-        s_flags[i] = false;
-    }
     s_lastButton = BTN_NONE;
 }

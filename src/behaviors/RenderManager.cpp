@@ -38,6 +38,13 @@ String targetName(const RankedTarget *t)
 	return String(BODY_CATALOG[t->catalogIndex].nameAscii);
 }
 
+String targetNameCn(const RankedTarget *t)
+{
+	if (t->kind == TARGET_STAR)
+		return String(STAR_CATALOG[t->catalogIndex].nameCn);
+	return String(BODY_CATALOG[t->catalogIndex].nameCn);
+}
+
 double wrapDeg(double deg)
 {
 	while (deg > 180.0) deg -= 360.0;
@@ -268,14 +275,14 @@ void oledCalibrate(const InputSnapshot &s)
 		int start = windowStart(s.listCursor, topN, OLED_ROWS);
 		int k = 0;
 		for (int i = start; i < topN && k < OLED_ROWS; i++)
-			lines[k++] = String(i == s.listCursor ? "> " : "  ") + targetName(rankerAt(i));
+			lines[k++] = String(i == s.listCursor ? "> " : "  ") + targetNameCn(rankerAt(i));
 		oledShowScreen(lines, k);
 	} else if (s.calPhase == CAL_SELECTED) {
 		String lines[2];
 		int n = 0;
 		const RankedTarget *t = rankerAt(s.selectedTarget);
 		if (t != NULL)
-			lines[n++] = String("目标: ") + targetName(t);
+			lines[n++] = String("目标: ") + targetNameCn(t);
 		lines[n++] = "A 校准  B 返回";
 		oledShowScreen(lines, n);
 	} else { // CAL_DONE
@@ -315,7 +322,7 @@ void oledObserveLive(const InputSnapshot &s)
 		if (y < 0) y = 0;
 		if (y > SCREEN_H - 1) y = SCREEN_H - 1;
 		oledDrawDisc(x, y, 1);                       // 位置标记点
-		oledDrawStr(x + 3, y, targetName(t).c_str()); // 星名
+		oledDrawStr(x + 3, y, targetNameCn(t).c_str()); // 星名
 	}
 
 	oledEndFrame();
@@ -332,8 +339,8 @@ void oledObserveList(const InputSnapshot &s)
 	String lines[4];
 	int start = windowStart(s.listCursor, count, OLED_ROWS);
 	int k = 0;
-	for (int i = start; i < count && k < OLED_ROWS; i++)
-		lines[k++] = String(i == s.listCursor ? "> " : "  ") + targetName(rankerAt(i));
+		for (int i = start; i < count && k < OLED_ROWS; i++)
+			lines[k++] = String(i == s.listCursor ? "> " : "  ") + targetNameCn(rankerAt(i));
 	oledShowScreen(lines, k);
 }
 
@@ -349,7 +356,7 @@ void oledGuide(const InputSnapshot &s)
 	}
 
 	// 顶部目标名
-	oledDrawStr(0, 10, targetName(t).c_str());
+	oledDrawStr(0, 10, targetNameCn(t).c_str());
 
 	// 中心瞄准圆圈（reticle）
 	oledDrawCircle(SCREEN_CX, SCREEN_CY, 18);

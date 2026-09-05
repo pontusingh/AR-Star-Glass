@@ -20,7 +20,6 @@ typedef enum {
 } ButtonId;
 
 void buttonInit();         // 配置 4 个按键引脚，注册中断
-bool buttonAnyPressed();   // 是否有任意按键按下
 ButtonId buttonRead();     // 返回最新按下的按键 ID（BTN_NONE 表示无）
 void buttonClear();        // 清除所有按键标志
 

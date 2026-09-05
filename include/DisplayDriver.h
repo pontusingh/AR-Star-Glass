@@ -10,7 +10,6 @@
 #define PIN_OLED_SCL 9
 
 void oledInit();                        // 初始化 OLED（唯一一次 I2C 总线初始化）
-void oledShowText(const String &text);  // 入队待显示文本（蓝牙回调中调用安全：仅拷贝+置脏标志）
 void oledShowScreen(const String lines[], int n); // 整屏替换：清屏按 n 行绘制（n>4 截断）
 void oledTick();                        // loop 中每圈调用：有脏标志时统一刷新整屏
 

@@ -11,10 +11,8 @@ static U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, PIN_OLED
 static const int MAX_TEXT_LINES = 4;
 static String screenLines[MAX_TEXT_LINES];
 static int lineCount = 0;
-static volatile bool oledDirty = false;     // 蓝牙回调置 1，loop() 里统一刷新
-static String pendingText = "";            // 待入队的文本
+static volatile bool oledDirty = false;     // 有脏标志时 loop() 里统一刷新
 
-static void oledPushLines();
 static void oledRedraw();
 
 /**
@@ -26,15 +24,6 @@ void oledInit() {
 	u8g2.begin();              // 初始化 OLED，顺便完成 I2C 总线初始化
 	u8g2.enableUTF8Print();    // 支持中文 UTF-8 显示
 	u8g2.setFont(u8g2_font_wqy12_t_gb2312); // 中文字体
-}
-
-/**
- * @brief 实时显示：拷贝到待处理缓冲区 + 打脏标志，实际绘制留给 loop() 执行
- *        (蓝牙回调运行于协议栈任务，避免于此直接绘制屏幕)
- */
-void oledShowText(const String &text) {
-	pendingText = text;
-	oledDirty = true;
 }
 
 /**
@@ -85,42 +74,17 @@ void oledDrawTriangle(int x0, int y0, int x1, int y1, int x2, int y2) {
 }
 
 /**
- * @brief loop 中每圈调用：有新文本时推入滚动缓冲区并整屏刷新。
+ * @brief loop 中每圈调用：有脏标志时整屏刷新。
  */
 void oledTick() {
 	if (oledDirty) {
 		oledDirty = false;
-		oledPushLines();
 		oledRedraw();
 	}
 }
 
 /**
- * @brief 把 pendingText 按换行拆分，推入滚动缓冲区。
- *        缓冲区满（4 行）时，滚动顶掉最旧一行，永远只显示最近内容。
- */
-static void oledPushLines() {
-	String chunk;
-	for (int i = 0; i <= pendingText.length(); i++) {
-		char c = (i < pendingText.length()) ? pendingText.charAt(i) : '\n';
-		if (c == '\n') {
-			if (chunk.length() > 0) {
-				if (lineCount >= MAX_TEXT_LINES) {                  // 满 → 滚动
-					for (int j = 0; j < MAX_TEXT_LINES - 1; j++) screenLines[j] = screenLines[j + 1];
-					screenLines[MAX_TEXT_LINES - 1] = chunk;
-				} else {
-					screenLines[lineCount++] = chunk;
-				}
-			}
-			chunk = "";
-		} else if (c != '\r') {
-			chunk += c;
-		}
-	}
-}
-
-/**
- * @brief 刷新整屏：清屏并把滚动缓冲区的内容逐行绘制到 OLED。
+ * @brief 刷新整屏：清屏并把缓冲区的内容逐行绘制到 OLED。
  */
 static void oledRedraw() {
 	u8g2.clearBuffer();

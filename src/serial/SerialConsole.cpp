@@ -98,7 +98,7 @@ static void printHelp()
 	Serial.println("  R                                  打印一次可见 Top10（含高度/方位角）");
 }
 
-static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
+static void handleCommand(char *line, bool &forceRefresh)
 {
 	char *saveptr = NULL;
 	char *cmd = strtok_r(line, " \t", &saveptr);
@@ -156,16 +156,18 @@ static void handleCommand(char *line, astro_utc_t &nowUtc, bool &forceRefresh)
 				for (int i = 0; i < 6; i++)
 					ok = ok && parseTokenDouble(tokens[i], &v[i]);
 				if (ok) {
-					nowUtc.year = (int)v[0];
-					nowUtc.month = (int)v[1];
-					nowUtc.day = (int)v[2];
-					nowUtc.hour = (int)v[3];
-					nowUtc.minute = (int)v[4];
-					nowUtc.second = v[5];
+					astro_utc_t utc;
+					utc.year = (int)v[0];
+					utc.month = (int)v[1];
+					utc.day = (int)v[2];
+					utc.hour = (int)v[3];
+					utc.minute = (int)v[4];
+					utc.second = v[5];
+					gpsManagerSetUtc(utc);
 					forceRefresh = true;
 					Serial.printf("当前 UTC 已设为 %04d-%02d-%02d %02d:%02d:%02d\n",
-						      nowUtc.year, nowUtc.month, nowUtc.day,
-						      nowUtc.hour, nowUtc.minute, (int)nowUtc.second);
+						      utc.year, utc.month, utc.day,
+						      utc.hour, utc.minute, (int)utc.second);
 				} else {
 					Serial.println("用法: T <年 月 日 时 分 秒>");
 				}
@@ -225,7 +227,7 @@ void serialConsoleInit()
 	printHelp();
 }
 
-void serialConsoleTick(astro_utc_t &nowUtc, bool &forceRefresh)
+void serialConsoleTick(bool &forceRefresh)
 {
 	while (Serial.available() > 0) {
 		char c = (char)Serial.read();
@@ -233,7 +235,7 @@ void serialConsoleTick(astro_utc_t &nowUtc, bool &forceRefresh)
 			continue;
 		if (c == '\n') {
 			s_lineBuf[s_lineLen] = '\0';
-			handleCommand(s_lineBuf, nowUtc, forceRefresh);
+			handleCommand(s_lineBuf, forceRefresh);
 			s_lineLen = 0;
 		} else if (s_lineLen < sizeof(s_lineBuf) - 1) {
 			s_lineBuf[s_lineLen++] = c;

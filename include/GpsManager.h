@@ -22,6 +22,7 @@ void         gpsManagerRequestFreshFix();           // 菜单触发：重置回 
 GpsStatus    gpsManagerGetStatus();                 // 供 OLED/串口读取当前状态
 const char*  gpsManagerStatusTag();                 // 状态标签："GPS"/"NVS"/"无位置"/"搜索中"
 bool         gpsManagerGetLocation(astro_observer_t *out); // FIXED→实时；FALLBACK/NONE→回退/占位
-bool         gpsManagerGetUtc(astro_utc_t *out);           // 时间（天文引擎需要）
+bool         gpsManagerGetUtc(astro_utc_t *out);           // 时间（天文引擎需要），锚点后随 millis 推进
+void         gpsManagerSetUtc(astro_utc_t utc);            // 手动重锚当前时钟（T 命令），此后随 millis 推进
 
 #endif // GPS_MANAGER_H

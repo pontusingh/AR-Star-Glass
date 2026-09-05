@@ -18,8 +18,8 @@
 void serialConsoleInit();
 
 // 从 Serial 读取字符，累积到行缓冲，遇换行解析执行。
-// 命令可能修改 nowUtc（T）和 forceRefresh（R/P/TT）。
-void serialConsoleTick(astro_utc_t &nowUtc, bool &forceRefresh);
+// 命令可能重锚时钟（T → gpsManagerSetUtc）和置 forceRefresh（R/P/TT）。
+void serialConsoleTick(bool &forceRefresh);
 
 // 打印可见目标表头 + Top N（纯输出，不修改状态）
 void serialReportTargets(astro_time_t effectiveTime, astro_observer_t effectiveObs);

@@ -13,6 +13,12 @@ static astro_observer_t s_observer = {0.0, 0.0, 0.0};
 static astro_utc_t s_utc = {0, 0, 0, 0, 0, 0.0};
 static bool s_fallbackValid = false;
 
+// 时间锚点：取得一次定位后即停止读 GPS，之后用 MCU millis() 推进时间。
+// 时钟 = 锚点时刻 + (millis()-锚点毫秒)，由引擎 AddDays/UtcFromTime 完成日历进位。
+static astro_time_t s_anchorTime;
+static unsigned long s_anchorMs = 0;
+static bool s_anchored = false;
+
 // 把当前 GPS 数据写入 NVS（仅在 fix 落地瞬间调用，频率极低，无闪存磨损顾虑）。
 static void saveNvsGpsData()
 {
@@ -88,6 +94,9 @@ void gpsManagerTick()
             s_fallbackValid = true;
             saveNvsGpsData();
             s_status = GPS_STATUS_FIXED;
+            s_anchorTime = astroMakeTime(d.year, d.month, d.day, d.hour, d.minute, d.second);
+            s_anchorMs = millis();
+            s_anchored = true;
             Serial.printf("[GPS] 定位成功: lat=%.4f lon=%.4f h=%.1fm\n",
                           s_observer.latitude, s_observer.longitude, s_observer.height);
             return;
@@ -98,6 +107,10 @@ void gpsManagerTick()
     if (millis() - s_searchStartMs >= GPS_SEARCH_TIMEOUT_MS) {
         if (s_fallbackValid) {
             s_status = GPS_STATUS_FALLBACK;
+            s_anchorTime = astroMakeTime(s_utc.year, s_utc.month, s_utc.day,
+                                          s_utc.hour, s_utc.minute, s_utc.second);
+            s_anchorMs = millis();
+            s_anchored = true;
             Serial.printf("[NVS] 定位超时，使用上次位置: lat=%.4f lon=%.4f\n",
                           s_observer.latitude, s_observer.longitude);
         } else {
@@ -139,7 +152,18 @@ bool gpsManagerGetLocation(astro_observer_t *out)
 bool gpsManagerGetUtc(astro_utc_t *out)
 {
     if (out == NULL) return false;
-    if (s_status == GPS_STATUS_SEARCHING) return false;
-    *out = s_utc;
-    return true;
+    if (s_anchored) {
+        // 用 MCU millis() 推进时间：(uint32_t) 差值天然抗 49.7 天回绕。
+        double days = (double)((uint32_t)(millis() - s_anchorMs)) / 86400000.0;
+        *out = Astronomy_UtcFromTime(Astronomy_AddDays(s_anchorTime, days));
+        return true;
+    }
+    return false; // 从未锚定（NONE/SEARCHING）→ 无时间，不喂 year=0
+}
+
+void gpsManagerSetUtc(astro_utc_t utc)
+{
+    s_anchorTime = astroMakeTime(utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second);
+    s_anchorMs = millis();
+    s_anchored = true;
 }

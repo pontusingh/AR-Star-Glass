@@ -58,20 +58,26 @@ void setup()
 
 void loop()
 {
-	// 1. 串口命令处理（可能通过引用修改 s_nowUtc / s_observer / s_forceRefresh）
-	serialConsoleTick(s_nowUtc, s_forceRefresh);
+	// 1. 串口命令处理（可能修改 s_forceRefresh；T 命令经 gpsManagerSetUtc 重锚时钟）
+	serialConsoleTick(s_forceRefresh);
 
-	// 2. GPS 状态机（非阻塞）；状态离开 SEARCHING 时拉取时间/位置
+	// 2. GPS 状态机（非阻塞）；状态离开 SEARCHING 时拉取位置
 	gpsManagerTick();
 	GpsStatus gpsStatus = gpsManagerGetStatus();
 	if (gpsStatus != s_lastGpsStatus) {
 		s_lastGpsStatus = gpsStatus;
 		if (gpsStatus != GPS_STATUS_SEARCHING) {
-			astro_utc_t utc;
-			if (gpsManagerGetUtc(&utc)) s_nowUtc = utc;
 			astro_observer_t obs;
 			if (gpsManagerGetLocation(&obs)) s_observer = obs;
 		}
+	}
+
+	// 2b. 时间：锚点后随 millis 推进，约 1Hz 刷新 s_nowUtc（无需每圈算 AddDays/UtcFromTime）
+	static unsigned long lastClockMs = 0;
+	if (millis() - lastClockMs >= 1000) {
+		lastClockMs = millis();
+		astro_utc_t utc;
+		if (gpsManagerGetUtc(&utc)) s_nowUtc = utc;
 	}
 
 	imuTick();              // BNO085 取数（INT 门控，50Hz）

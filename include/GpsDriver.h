@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include "AstronomyEngine.h"
 
+// 引脚（ESP32-S3，走 UART1）：RX=GPIO17, TX=GPIO18，9600 波特
+#define PIN_GPS_RX 17
+#define PIN_GPS_TX 18
+
 typedef struct {
     double     lat;              // 十进制度（北正南负）
     double     lon;              // 十进制度（东正西负）

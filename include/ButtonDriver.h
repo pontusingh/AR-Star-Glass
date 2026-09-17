@@ -4,11 +4,11 @@
 #include <Arduino.h>
 
 // 驱动层：4 个物理按键的去抖读取（纯硬件封装，无逻辑）
-// A=GPIO4 确认，B=GPIO5 返回，UP=GPIO6 上/加，DOWN=GPIO7 下/减
+// A=GPIO0 确认，B=GPIO1 返回，UP=GPIO10 上/加，DOWN=GPIO7 下/减
 
-#define PIN_BTN_A     4
-#define PIN_BTN_B     5
-#define PIN_BTN_UP    6
+#define PIN_BTN_A     0
+#define PIN_BTN_B     1
+#define PIN_BTN_UP    10
 #define PIN_BTN_DOWN  7
 
 typedef enum {

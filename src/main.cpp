@@ -34,7 +34,10 @@ static GpsStatus s_lastGpsStatus = GPS_STATUS_SEARCHING;
 void setup()
 {
 	Serial.begin(115200);
-	delay(300);
+	// 等待 USB-CDC 连接建立（最多 1s）：复位后 USB-Serial-JTAG 会重新枚举，
+	// 链路未就绪时 HWCDC 会把输出丢弃，导致开机横幅看不到。超时兜底避免无监视器时卡启动。
+	unsigned long usbT0 = millis();
+	while (!Serial && (millis() - usbT0) < 1000) delay(10);
 	Serial.println("\n===== 观星AR眼镜 固件启动 =====");
 	Serial.println("阶段: BNO085 IMU 已接入");
 
@@ -42,7 +45,7 @@ void setup()
 	buttonInit();
 	oledInit();
 	gpsManagerBegin();      // init NVS+GPS → 进入 SEARCHING（非阻塞）
-	imuInit();              // BNO085（Wire1）；失败时自动回退串口 O 注入
+	imuInit();              // BNO085（共享 Wire）；失败时自动回退串口 O 注入
 	orientationInit();      // 从 NVS 加载校准残差（单点验证修正量）
 
 	Serial.printf("目录自检: 恒星 %d 颗, 太阳系天体 %d 个\n", STAR_CATALOG_COUNT,
@@ -85,7 +88,11 @@ void loop()
 	// 3. 输入状态机：同步基准时间 + 路由按键（含 3s 超时）
 	inputManagerSetBaseTime(s_nowUtc);
 	ButtonId btn = buttonRead();
-	if (btn != BTN_NONE) buttonClear();
+	if (btn != BTN_NONE) {
+		static const char *const kBtnName[] = {"A", "B", "+", "-"};
+		Serial.printf("按钮%s\n", kBtnName[btn]);
+		buttonClear();
+	}
 	inputManagerUpdate(btn);
 
 	// 4. 数据页刷新：进入校准/名录等页面后重算 ranker，再重绘页面

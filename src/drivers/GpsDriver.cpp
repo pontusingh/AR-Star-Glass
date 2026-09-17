@@ -244,7 +244,7 @@ static void parseNmeaLine(const char *line)
 void gpsInit()
 {
     GPS_Serial.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-    Serial.println("[GPS] UART1 started @9600 on GPIO17/18");
+    Serial.println("[GPS] UART1 started @9600 on GPIO4/3");
 }
 
 void gpsTick()

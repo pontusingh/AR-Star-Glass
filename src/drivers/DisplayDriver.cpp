@@ -4,8 +4,8 @@
 
 #include "DisplayDriver.h"
 
-// 引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化。
-// 教训：绝不能在这里再次调用 Wire.begin()，否则 ESP32-S3 I2C 总线锁死（见 test/oled.cpp）。
+// 引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化（与 IMU 共享 Wire）。
+// 教训：绝不能在这里再次调用 Wire.begin()，否则 ESP32 I2C 总线锁死（见 test/oled.cpp）。
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_MIRROR, U8X8_PIN_NONE, PIN_OLED_SCL, PIN_OLED_SDA);
 
 static const int MAX_TEXT_LINES = 4;
@@ -17,8 +17,8 @@ static void oledRedraw();
 
 /**
  * @brief 初始化 OLED 显示
- *        引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化。
- *        务必不要在此额外调用 Wire.begin()，否则 ESP32-S3 I2C 总线锁死。
+ *        引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化（与 IMU 共享 Wire）。
+ *        务必不要在此额外调用 Wire.begin()，否则 ESP32 I2C 总线锁死。
  */
 void oledInit() {
 	u8g2.begin();              // 初始化 OLED，顺便完成 I2C 总线初始化

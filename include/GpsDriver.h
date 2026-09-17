@@ -4,9 +4,9 @@
 #include <Arduino.h>
 #include "AstronomyEngine.h"
 
-// 引脚（ESP32-S3，走 UART1）：RX=GPIO17, TX=GPIO18，9600 波特
-#define PIN_GPS_RX 17
-#define PIN_GPS_TX 18
+// 引脚（ESP32-C3，走 UART1）：RX=GPIO4, TX=GPIO3，9600 波特
+#define PIN_GPS_RX 4
+#define PIN_GPS_TX 3
 
 typedef struct {
     double     lat;              // 十进制度（北正南负）
@@ -18,7 +18,7 @@ typedef struct {
     bool       fix_valid;       // 定位是否有效
 } GpsData;
 
-void     gpsInit();                          // 初始化 UART1 (GPIO17/18, 9600)
+void     gpsInit();                          // 初始化 UART1 (GPIO4/3, 9600)
 void     gpsTick();                          // 读取/解析一帧 NMEA
 bool     gpsHasFix();                        // 是否有有效定位
 bool     gpsGetData(GpsData *out);           // 复制当前 GPS 数据

@@ -4,8 +4,8 @@
 #include <Arduino.h>
 
 // ---------- OLED 显示部分 ----------
-// 引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化。
-// 教训：绝不能在这里再次调用 Wire.begin()，否则 ESP32-S3 I2C 总线锁死（见 test/oled.cpp）。
+// 引脚由 U8g2 构造器传入，内部完成唯一一次 I2C 总线初始化（与 IMU 共享 Wire）。
+// 教训：绝不能在这里再次调用 Wire.begin()，否则 ESP32 I2C 总线锁死（见 test/oled.cpp）。
 #define PIN_OLED_SDA 8
 #define PIN_OLED_SCL 9
 

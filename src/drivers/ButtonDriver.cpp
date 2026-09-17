@@ -17,7 +17,7 @@ static volatile ButtonId       s_lastButton = BTN_NONE;
 void ARDUINO_ISR_ATTR onAnyButton() {
     unsigned long now = millis();
     for (int i = 0; i < BTN_COUNT; i++) {
-        if (digitalRead(BTN_PINS[i]) == LOW
+        if (digitalRead(BTN_PINS[i]) == HIGH
             && (now - s_lastPress[i]) > DEBOUNCE_MS) {
             s_lastPress[i] = now;
             s_lastButton = (ButtonId)i;
@@ -27,10 +27,10 @@ void ARDUINO_ISR_ATTR onAnyButton() {
 
 void buttonInit() {
     for (int i = 0; i < BTN_COUNT; i++) {
-        pinMode(BTN_PINS[i], INPUT_PULLUP);
+        pinMode(BTN_PINS[i], INPUT_PULLDOWN);
     }
     for (int i = 0; i < BTN_COUNT; i++) {
-        attachInterrupt(digitalPinToInterrupt(BTN_PINS[i]), onAnyButton, FALLING);
+        attachInterrupt(digitalPinToInterrupt(BTN_PINS[i]), onAnyButton, RISING);
     }
 }
 

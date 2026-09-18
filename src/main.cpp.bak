@@ -1,0 +1,53 @@
+// 临时测试代码：OLED 满屏文字测试（英文 + 中文），用于检测光学设备成像。
+// 说明：这是临时替换的 main.cpp，正常固件已备份为 src/main.cpp.bak。
+//       测完光学后删除本文件并把 main.cpp.bak 改回 main.cpp 即可恢复。
+#include <Arduino.h>
+#include "DisplayDriver.h"
+
+// 在 (0, y) 处画一行满宽文字，y 为基线；wqy12 字体行高约 12，5 行正好铺满 64 高。
+static void drawFullLine(int y, const char *s)
+{
+	oledDrawStr(0, y, s);
+}
+
+void setup()
+{
+	Serial.begin(115200);
+	delay(300);
+	Serial.println("\n===== OLED 满屏文字测试（英文+中文） =====");
+
+	oledInit();   // 初始化 OLED（唯一一次 I2C 总线初始化，勿再 Wire.begin）
+}
+
+void loop()
+{
+	// 屏 1：英文数字满屏
+	oledStartFrame();
+	drawFullLine(12, "ABCDEFGHIJKLMNOP");
+	drawFullLine(24, "abcdefghijklmnop");
+	drawFullLine(36, "0123456789 ~!@#$");
+	drawFullLine(48, "AR-STAR-GLASS 2026");
+	drawFullLine(60, "OLED 128x64 I2C OK");
+	oledEndFrame();
+	delay(3000);
+
+	// 屏 2：中文满屏
+	oledStartFrame();
+	drawFullLine(12, "观星AR眼镜测试");
+	drawFullLine(24, "光学设备检查中");
+	drawFullLine(36, "满屏文字渲染验证");
+	drawFullLine(48, "一二三四五六七八");
+	drawFullLine(60, "中文显示正常吗");
+	oledEndFrame();
+	delay(3000);
+
+	// 屏 3：中英混合满屏
+	oledStartFrame();
+	drawFullLine(12, "Star 观星 天狼星");
+	drawFullLine(24, "Test 测试 OK 正常");
+	drawFullLine(36, "银河 Galaxy 北斗");
+	drawFullLine(48, "Polaris 北极星");
+	drawFullLine(60, "满屏 FullScreen");
+	oledEndFrame();
+	delay(3000);
+}
